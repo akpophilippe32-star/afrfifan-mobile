@@ -15,20 +15,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ✅ 1. Java 17 est le "juste milieu" obligatoire pour Gradle 8.x+
+      # ✅ 1. Java 21 est OBLIGATOIRE pour Gradle 9.1.0
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
-      # ✅ 2. Version Flutter stable éprouvée avec Java 17
+      # ✅ 2. Version Flutter stable récente
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.24.5' 
+          flutter-version: '3.27.4'
           cache: true
+
+      # ✅ 3. NETTOYAGE DU CACHE (C'est ça qui règle le bug groovy.xml.QName)
+      - name: Clean Gradle Cache
+        run: |
+          rm -rf ~/.gradle/caches/
+          rm -rf android/.gradle/
+          echo "Cache nettoyé avec succès"
 
       - name: Install dependencies
         run: flutter pub get

@@ -15,7 +15,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ✅ Java 17 est le standard le plus stable pour Flutter + Gradle 8.x
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -28,6 +27,12 @@ jobs:
           channel: 'stable'
           flutter-version: '3.27.4'
           cache: true
+
+      # ✅ ÉTAPE AJOUTÉE : Créer un faux fichier .env pour que la compilation ne plante pas
+      - name: Create dummy .env for build
+        run: |
+          echo "SUPABASE_URL=https://dummy.supabase.co" > .env
+          echo "SUPABASE_ANON_KEY=dummy_anon_key" >> .env
 
       - name: Install dependencies
         run: flutter pub get

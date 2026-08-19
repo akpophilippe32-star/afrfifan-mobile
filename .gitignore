@@ -1,0 +1,62 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+# ========================================
+# AJOUTS CRITIQUES POUR AFRIFAN
+# ========================================
+
+# 1. SÉCURITÉ : Ne jamais partager tes clés API ou fichiers .env
+.env
+.env.local
+lib/config/
+
+# 2. WINDOWS : C'est CECI qui bloquait ton envoi à 263 Mo !
+windows/flutter/ephemeral/
+windows/runner/Debug/
+windows/runner/Release/
+*.pdb
+
+# 3. NETTOYAGE SUPPLÉMENTAIRE
+pubspec.lock

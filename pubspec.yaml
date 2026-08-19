@@ -1,0 +1,32 @@
+name: afrifan
+description: "Afrifan - Soutenez vos créateurs. Vivez l'Afrique."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  device_preview: ^1.2.0
+  supabase_flutter: ^2.6.0
+  flutter_dotenv: ^5.2.1
+  image_picker: ^1.1.2
+  share_plus: ^12.0.2
+  file_picker: ^8.1.2
+  just_audio: ^0.9.36
+  carousel_slider: ^5.0.0
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - .env

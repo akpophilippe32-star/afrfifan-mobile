@@ -15,19 +15,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ✅ CORRECTION 1 : Installer Java 17 (compatible avec Flutter)
+      # ✅ CORRECTION : Utiliser Java 11 (compatible avec toutes les versions de Gradle)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: 'temurin'
+          java-version: '11'
 
-      # ✅ CORRECTION 2 : Mettre à jour Flutter vers 3.27.4
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.27.4'
           cache: true
 
       - name: Install dependencies

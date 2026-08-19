@@ -15,17 +15,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ✅ CORRECTION : Utiliser Java 11 (compatible avec toutes les versions de Gradle)
+      # ✅ 1. Java 17 est le "juste milieu" obligatoire pour Gradle 8.x+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: '17'
 
+      # ✅ 2. Version Flutter stable éprouvée avec Java 17
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.24.5' 
           cache: true
 
       - name: Install dependencies

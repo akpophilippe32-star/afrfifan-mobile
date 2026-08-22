@@ -151,6 +151,36 @@ class NotificationService {
       debugPrint('❌ Erreur deleteNotification: $e');
     }
   }
+
+  // ==========================================================
+  // ✅ NOUVEAU : Écouter les nouvelles notifications en temps réel
+  // =========================================================
+    // ==========================================================
+  // ✅ NOUVEAU : Écouter les nouvelles notifications en temps réel (Syntaxe v2+)
+  // ==========================================================
+  void subscribeToNotifications(void Function(Map<String, dynamic>) onNewNotification) {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    _supabase
+        .channel('notifications_channel')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'notifications',
+          // On filtre directement côté base de données pour ne recevoir que les notifs de l'utilisateur
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: user.id,
+          ),
+          callback: (payload) {
+            final newRecord = payload.newRecord as Map<String, dynamic>;
+            onNewNotification(newRecord);
+          },
+        )
+        .subscribe();
+  }
 }
 
 /// Instance globale facile à utiliser dans les écrans

@@ -28,11 +28,11 @@ jobs:
           flutter-version: '3.27.4'
           cache: true
 
-      # ✅ ÉTAPE AJOUTÉE : Créer un faux fichier .env pour que la compilation ne plante pas
-      - name: Create dummy .env for build
+      # ✅ MODIFIÉ : Utilisation des secrets GitHub pour injecter tes vraies clés
+      - name: Create .env from GitHub Secrets
         run: |
-          echo "SUPABASE_URL=https://dummy.supabase.co" > .env
-          echo "SUPABASE_ANON_KEY=dummy_anon_key" >> .env
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
 
       - name: Install dependencies
         run: flutter pub get

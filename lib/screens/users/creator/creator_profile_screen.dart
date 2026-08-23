@@ -7,7 +7,8 @@ import '../../../theme/app_colors.dart';
 import '../messages/chat_screen.dart';
 import 'post_detail_screen.dart';
 import 'subscription_payment_screen.dart'; // ✅ Import de l'écran de paiement
-
+import '../../../widgets/tip_dialog.dart'; // ✅ Import de la fenêtre de pourboire
+import '../../../widgets/report_dialog.dart'; // ✅ AJOUT : Pour le signalement de profil
 class CreatorProfileScreen extends StatefulWidget {
   final String creatorId;
 
@@ -205,20 +206,30 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-  void _openPostDetail(int index) {
-    // ✅ Si pas abonné du tout, on bloque
+    void _openPostDetail(int index) {
     if (!_isSubscribed) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(' Abonnez-vous pour voir ce contenu en détail'), backgroundColor: Color(0xFF8B5CF6)),
+        const SnackBar(content: Text('Abonnez-vous pour voir ce contenu en détail'), backgroundColor: Color(0xFF8B5CF6)),
       );
       return;
     }
+    
+    // ✅ On récupère le vrai nom du créateur depuis les données déjà chargées
+    final creatorName = _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur';
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PostDetailScreen(post: _posts[index], creatorId: widget.creatorId),
+        builder: (context) => PostDetailScreen(
+          posts: _posts,
+          initialIndex: index,
+          creatorId: widget.creatorId,
+          creatorName: creatorName, // ✅ On l'envoie ici
+        ),
       ),
-    );
+    ).then((success) {
+      if (success == true) _loadCreatorData();
+    });
   }
 
   String _formatCount(int count) {
@@ -242,7 +253,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
               ? const Center(child: Text('Créateur introuvable', style: TextStyle(color: Colors.white)))
               : CustomScrollView(
                   slivers: [
-                    SliverAppBar(
+                                        SliverAppBar(
                       expandedHeight: 120,
                       pinned: true,
                       backgroundColor: Colors.black,
@@ -254,6 +265,39 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         ),
                         onPressed: () => Navigator.pop(context),
                       ),
+                      
+                      // ✅ AJOUT : Menu 3 points en haut à droite du profil
+                      actions: [
+                        PopupMenuButton<String>(
+                          color: const Color(0xFF1A1A1A), // Fond sombre du menu
+                          icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
+                          onSelected: (value) {
+                            if (value == 'report') {
+                              showDialog(
+                                context: context,
+                                builder: (context) => ReportDialog(
+                                  targetId: widget.creatorId, // ✅ L'ID du créateur
+                                  targetType: 'profile',      // ✅ On signale un PROFIL ici
+                                ),
+                              );
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem<String>(
+                              value: 'report',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.flag_outlined, color: Colors.redAccent, size: 20),
+                                  SizedBox(width: 12),
+                                  Text('Signaler ce profil', style: TextStyle(color: Colors.white)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 8), // Petit espacement avant le bord droit
+                      ],
+
                       flexibleSpace: FlexibleSpaceBar(
                         background: Container(
                           decoration: const BoxDecoration(
@@ -316,9 +360,11 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               ],
                             ),
                             const SizedBox(height: 16),
+                                                        // ✅ LIGNE 1 : Boutons Suivre et Pourboire
                             Row(
                               children: [
                                 Expanded(
+                                  flex: 2, // Prend 2/3 de l'espace
                                   child: ElevatedButton(
                                     onPressed: _toggleFollow,
                                     style: ElevatedButton.styleFrom(
@@ -330,25 +376,51 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                     child: Text(_isFollowing ? 'Suivi' : 'Suivre'),
                                   ),
                                 ),
-                                const SizedBox(width: 12), 
+                                const SizedBox(width: 12),
                                 
-                                // ✅ NOUVEAU : Le bouton Message n'apparaît QUE si l'utilisateur est abonné PRO
-                                if (_isProSubscriber)
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: _openChat,
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.white,
-                                        side: BorderSide(color: Colors.grey.shade700),
-                                        padding: const EdgeInsets.symmetric(vertical: 12),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                      ),
-                                      icon: const Icon(Icons.message_outlined, size: 18),
-                                      label: const Text('Message'),
+                                // ✅ NOUVEAU : Bouton Pourboire (prend 1/3 de l'espace)
+                                Expanded(
+                                  flex: 1,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => TipDialog(
+                                          creatorId: widget.creatorId,
+                                          creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.local_cafe, size: 18),
+                                    label: const Text('Tip'), // Court pour gagner de la place
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: brandViolet,
+                                      side: BorderSide(color: brandViolet),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                     ),
                                   ),
+                                ),
                               ],
                             ),
+                            const SizedBox(height: 12),
+
+                            // ✅ LIGNE 2 : Bouton Message (uniquement pour les abonnés PRO, sur toute la largeur)
+                            if (_isProSubscriber)
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: _openChat,
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.white,
+                                    side: BorderSide(color: Colors.grey.shade700),
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  ),
+                                  icon: const Icon(Icons.message_outlined, size: 18),
+                                  label: const Text('Message privé'),
+                                ),
+                              ),
                             const SizedBox(height: 16),
                             if (_creator?['bio'] != null && _creator!['bio'].toString().isNotEmpty)
                               Text(_creator!['bio'].toString(), style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4)),

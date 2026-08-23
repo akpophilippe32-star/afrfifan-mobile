@@ -4,6 +4,7 @@ import '../../../theme/app_colors.dart';
 import '../../../services/notification_service.dart'; // 👈 AJOUT 1 : Import du service
 import '../notifications/notifications_screen.dart';
 import '../creator/creator_profile_screen.dart'; // 👈 AJOUT
+import 'explore_post_detail_screen.dart'; // ✅ Pour ouvrir le détail
 final supabase = Supabase.instance.client;
 
 class ExploreScreen extends StatefulWidget {
@@ -130,9 +131,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   Future<List<Map<String, dynamic>>> _fetchPosts() async {
     try {
-      final postsResponse = await supabase
+           final postsResponse = await supabase
           .from('posts')
-          .select('id, user_id, media_url, created_at')
+          .select('id, user_id, media_url, created_at, comments_count') // ✅ Ajouté ici
           .order('created_at', ascending: false)
           .limit(20);
 
@@ -464,71 +465,86 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       final mediaUrl = post['media_url']?.toString();
                       final mediaType = post['media_type']?.toString() ?? 'image';
 
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          color: Colors.grey.shade800,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              mediaUrl != null
-                                  ? Image.network(mediaUrl, fit: BoxFit.cover)
-                                  : Container(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [Colors.purple.shade900, Colors.black],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        ),
-                                      ),
-                                    ),
-                              
-                              if (mediaType == 'video')
-                              const Center(
-                                child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 45),
+                                            // ✅ 1. On ajoute GestureDetector POUR RENDRE LA CASE CLIQUABLE
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ExplorePostDetailScreen(
+                                posts: posts,         // On envoie toute la liste des posts
+                                initialIndex: index,  // On ouvre directement celui qu'on a cliqué
                               ),
-                              
-                              Positioned(
-                                bottom: 8,
-                                left: 8,
-                                right: 8,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        username,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          shadows: [Shadow(blurRadius: 3, color: Colors.black)],
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.favorite, color: Colors.red, size: 12),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          likesCount.toString(),
-                                          style: const TextStyle(
-                                            color: Colors.white, 
-                                            fontSize: 11, 
-                                            shadows: [Shadow(blurRadius: 3, color: Colors.black)]
+                            ),
+                          );
+                        },
+                        // ✅ 2. Le ClipRRect devient l'enfant (child) du GestureDetector
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            color: Colors.grey.shade800,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                mediaUrl != null
+                                    ? Image.network(mediaUrl, fit: BoxFit.cover)
+                                    : Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [Colors.purple.shade900, Colors.black],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  ],
+                                      ),
+                                
+                                if (mediaType == 'video')
+                                  const Center(
+                                    child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 45),
+                                  ),
+                                
+                                Positioned(
+                                  bottom: 8,
+                                  left: 8,
+                                  right: 8,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          username,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            shadows: [Shadow(blurRadius: 3, color: Colors.black)],
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.favorite, color: Colors.red, size: 12),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            likesCount.toString(),
+                                            style: const TextStyle(
+                                              color: Colors.white, 
+                                              fontSize: 11, 
+                                              shadows: [Shadow(blurRadius: 3, color: Colors.black)]
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      );
+                        ), // ✅ Fin du ClipRRect
+                      ); // ✅ Fin du GestureDetector (N'oublie pas cette parenthèse !)
                     },
                   );
                 },

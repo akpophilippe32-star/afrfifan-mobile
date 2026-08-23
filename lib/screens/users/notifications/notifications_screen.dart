@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/notification_service.dart';
 import '../../../theme/app_colors.dart';
 
@@ -11,6 +12,7 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final NotificationService _notificationService = NotificationService();
+  final supabase = Supabase.instance.client;
   
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = true;
@@ -19,10 +21,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void initState() {
     super.initState();
     _loadNotifications();
-    _listenToRealtimeNotifications(); // Optionnel : pour les mises à jour en temps réel
+    _listenToRealtimeNotifications();
   }
 
-  // Écoute les nouvelles notifications en temps réel (Bonus)
   void _listenToRealtimeNotifications() {
     _notificationService.subscribeToNotifications((newNotification) {
       if (mounted) {
@@ -33,16 +34,54 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
   }
 
-  Future<void> _loadNotifications() async {
+    Future<void> _loadNotifications() async {
     setState(() => _isLoading = true);
     
-    final notifications = await _notificationService.fetchMyNotifications();
-    
-    if (mounted) {
-      setState(() {
-        _notifications = notifications;
-        _isLoading = false;
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      debugPrint('⚠️ Utilisateur non connecté');
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      // 1. Récupérer les notifications classiques
+      final notifications = await _notificationService.fetchMyNotifications();
+      debugPrint('✅ Notifications classiques chargées: ${notifications.length}');
+      
+      // 2. Récupérer les campagnes admin
+      debugPrint('🔍 Recherche des campagnes pour l\'user: $userId');
+      final campaignsResponse = await supabase
+          .from('admin_campaigns')
+          .select('*')
+          .or('target_type.eq.all,target_user_id.eq.$userId')
+          .order('created_at', ascending: false);
+      
+      final campaigns = List<Map<String, dynamic>>.from(campaignsResponse ?? []);
+      debugPrint('✅ Campagnes admin trouvées: ${campaigns.length}');
+      
+      // 3. Fusionner les deux listes
+      final allNotifications = [...notifications, ...campaigns];
+      
+      // 4. Trier par date (le plus récent en premier)
+      allNotifications.sort((a, b) {
+        final dateA = DateTime.parse(a['created_at']);
+        final dateB = DateTime.parse(b['created_at']);
+        return dateB.compareTo(dateA);
       });
+
+      if (mounted) {
+        setState(() {
+          _notifications = allNotifications;
+          _isLoading = false;
+        });
+        debugPrint('🎉 Total des notifications affichées: ${_notifications.length}');
+      }
+    } catch (e) {
+      debugPrint('❌ ERREUR CRITIQUE chargement notifications: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -61,14 +100,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     await _loadNotifications();
   }
 
-  // ✅ MIS À JOUR : Gestion des textes de retrait
   String _getNotificationText(Map<String, dynamic> notification) {
-    // 1. Priorité au titre/message envoyé par Next.js
+    // 1. Priorité au titre envoyé par l'admin (campagnes)
     if (notification['title'] != null && notification['title'].toString().isNotEmpty) {
       return notification['title'];
     }
 
-    // 2. Fallback pour les anciennes notifications ou autres types
+    // 2. Fallback pour les notifications classiques
     final actor = notification['actor_profile'] as Map<String, dynamic>?;
     final actorName = actor?['username'] ?? actor?['full_name'] ?? 'Utilisateur';
     final type = notification['type'];
@@ -83,7 +121,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return 'Nouvelle notification';
   }
 
-  // ✅ MIS À JOUR : Gestion des icônes de retrait
   IconData _getNotificationIcon(String type) {
     switch (type) {
       case 'new_follower': return Icons.person_add;
@@ -92,19 +129,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'withdrawal_approved': return Icons.check_circle;
       case 'withdrawal_rejected': return Icons.cancel;
       case 'withdrawal_failed': return Icons.error;
+      case 'admin_campaign': return Icons.campaign; // ✅ Icône pour les campagnes admin
       default: return Icons.notifications;
     }
   }
 
-  // ✅ MIS À JOUR : Gestion des couleurs de retrait
   Color _getNotificationColor(String type) {
     switch (type) {
       case 'new_follower': return Colors.blue;
       case 'message': return Colors.green;
       case 'new_post': return Colors.orange;
-      case 'withdrawal_approved': return Colors.green; // Vert pour succès
-      case 'withdrawal_rejected': return Colors.red;   // Rouge pour refus
-      case 'withdrawal_failed': return Colors.orange;  // Orange pour échec
+      case 'withdrawal_approved': return Colors.green;
+      case 'withdrawal_rejected': return Colors.red;
+      case 'withdrawal_failed': return Colors.orange;
+      case 'admin_campaign': return const Color(0xFF8B5CF6); // ✅ Violet pour les campagnes
       default: return Colors.grey;
     }
   }
@@ -118,7 +156,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (difference.inHours < 24) return 'Il y a ${difference.inHours}h';
     if (difference.inDays < 7) return 'Il y a ${difference.inDays}j';
     return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
-    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -194,8 +232,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       final notification = _notifications[index];
                       final actor = notification['actor_profile'] as Map<String, dynamic>?;
                       final avatarUrl = actor?['avatar_url']?.toString();
-                      final isRead = notification['is_read'] as bool;
-                      final type = notification['type'] as String;
+                      final isRead = notification['is_read'] as bool? ?? false;
+                      final type = notification['type'] as String? ?? 'admin_campaign';
                       final createdAt = DateTime.parse(notification['created_at']);
 
                       return GestureDetector(
@@ -221,7 +259,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         ? NetworkImage(avatarUrl) 
                                         : null,
                                     child: avatarUrl == null
-                                        ? const Icon(Icons.person, color: Colors.white)
+                                        ? const Icon(Icons.campaign, color: Colors.white)
                                         : null,
                                   ),
                                   Positioned(
@@ -248,7 +286,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // Affiche le titre (ex: "Retrait validé ✅")
                                     Text(
                                       _getNotificationText(notification),
                                       style: TextStyle(
@@ -258,7 +295,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 4),
-                                    // Affiche le message détaillé s'il existe (ex: "Votre retrait de 5000 FCFA...")
                                     if (notification['message'] != null && notification['message'].toString().isNotEmpty)
                                       Text(
                                         notification['message'],

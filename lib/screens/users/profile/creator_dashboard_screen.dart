@@ -5,7 +5,7 @@ import 'wallet_tab.dart';
 import 'subscribers_tab.dart';
 import 'stats_tab.dart';
 import 'settings_tab.dart';
-
+import 'tips_tab.dart'; // ✅ NOUVEAU
 class CreatorDashboardScreen extends StatefulWidget {
   const CreatorDashboardScreen({super.key});
 
@@ -80,6 +80,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
           SubscribersTab(),
           StatsTab(),
           SettingsTab(),
+          TipsTab(),
+
         ],
       ),
     );
@@ -129,6 +131,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                 _buildDrawerItem(2, Icons.people_outline, 'Abonnés'),
                 _buildDrawerItem(3, Icons.bar_chart_outlined, 'Statistiques'),
                 _buildDrawerItem(4, Icons.settings_outlined, 'Paramètres'),
+                _buildDrawerItem(5, Icons.local_cafe, 'Pourboires'), // ✅ NOUVEAU
+
               ],
             ),
           ),
@@ -154,7 +158,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   }
 
   String _getAppBarTitle() {
-    const titles = ['Vue d\'ensemble', 'Portefeuille', 'Abonnés', 'Statistiques', 'Paramètres'];
+    const titles = ['Vue d\'ensemble', 'Portefeuille', 'Abonnés', 'Statistiques', 'Paramètres', 'Pourboires']; // ✅ Ajout de 'Pourboires'
     return titles[_selectedIndex];
   }
+  
 }

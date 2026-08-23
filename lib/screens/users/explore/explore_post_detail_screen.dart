@@ -4,42 +4,33 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/tip_dialog.dart';
 import '../../../widgets/report_dialog.dart';
-import '../../../services/share_service.dart'; 
 
-class PostDetailScreen extends StatefulWidget {
+class ExplorePostDetailScreen extends StatefulWidget {
   final List<Map<String, dynamic>> posts;
   final int initialIndex;
-  final String creatorId;
-  final String creatorName; // ✅ AJOUTÉ
 
-  const PostDetailScreen({
+  const ExplorePostDetailScreen({
     super.key,
     required this.posts,
     required this.initialIndex,
-    required this.creatorId,
-    required this.creatorName, // ✅ AJOUTÉ
   });
-// ... (le reste de la classe reste pareil)
 
   @override
-  State<PostDetailScreen> createState() => _PostDetailScreenState();
+  State<ExplorePostDetailScreen> createState() => _ExplorePostDetailScreenState();
 }
 
-class _PostDetailScreenState extends State<PostDetailScreen> {
+class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
   late PageController _pageController;
   final supabase = Supabase.instance.client;
   String? _currentUserId;
-  String _currentUserName = 'Utilisateur';
-  
   Set<String> _likedPostIds = {};
-  bool _isFollowing = false;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: widget.initialIndex);
     _currentUserId = supabase.auth.currentUser?.id;
-    _loadUserData();
+    _loadLikes();
   }
 
   @override
@@ -48,35 +39,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     super.dispose();
   }
 
-  Future<void> _loadUserData() async {
+  Future<void> _loadLikes() async {
     final userId = _currentUserId;
     if (userId == null) return;
-
-    try {
-      final userProfile = await supabase.from('profiles').select('username, full_name').eq('id', userId).maybeSingle();
-      if (userProfile != null) {
-        _currentUserName = userProfile['full_name'] ?? userProfile['username'] ?? 'Utilisateur';
-      }
-
-      final followCheck = await supabase.from('follows').select().eq('follower_id', userId).eq('following_id', widget.creatorId).maybeSingle();
-      if (mounted) setState(() => _isFollowing = followCheck != null);
-
-      final postIds = widget.posts.map((p) => p['id'].toString()).toList();
-      final likesResponse = await supabase.from('post_likes').select('post_id').inFilter('post_id', postIds).eq('user_id', userId);
-      if (mounted) {
-        setState(() {
-          _likedPostIds = likesResponse.map((row) => row['post_id'].toString()).toSet();
-        });
-      }
-    } catch (e) {
-      debugPrint('❌ Erreur chargement user: $e');
+    final postIds = widget.posts.map((p) => p['id'].toString()).toList();
+    final likesResponse = await supabase.from('post_likes').select('post_id').inFilter('post_id', postIds).eq('user_id', userId);
+    if (mounted) {
+      setState(() {
+        _likedPostIds = likesResponse.map((row) => row['post_id'].toString()).toSet();
+      });
     }
   }
 
   Future<void> _handleLike(String postId, int currentLikes, int postIndex) async {
     final userId = _currentUserId;
     if (userId == null) return;
-
     final isLiked = _likedPostIds.contains(postId);
     try {
       int newLikes = currentLikes;
@@ -90,35 +67,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         setState(() => _likedPostIds.add(postId));
       }
       await supabase.from('posts').update({'likes_count': newLikes}).eq('id', postId);
-      
       setState(() {
-        if (postIndex < widget.posts.length) {
-          widget.posts[postIndex]['likes_count'] = newLikes;
-        }
+        if (postIndex < widget.posts.length) widget.posts[postIndex]['likes_count'] = newLikes;
       });
-    } catch (e) {
-      debugPrint('❌ Erreur like: $e');
-    }
+    } catch (e) { debugPrint('❌ Erreur like: $e'); }
   }
-
-  Future<void> _handleFollow() async {
-    final userId = _currentUserId;
-    if (userId == null) return;
-    try {
-      if (_isFollowing) {
-        await supabase.from('follows').delete().eq('follower_id', userId).eq('following_id', widget.creatorId);
-      } else {
-        await supabase.from('follows').insert({'follower_id': userId, 'following_id': widget.creatorId});
-      }
-      if (mounted) setState(() => _isFollowing = !_isFollowing);
-    } catch (e) {
-      debugPrint('❌ Erreur follow: $e');
-    }
-  }
-
   void _openComments(String postId, int currentComments, int postIndex) {
     final TextEditingController commentController = TextEditingController();
     final userId = _currentUserId;
+    final currentUserName = 'Utilisateur'; // Tu pourras récupérer le vrai nom si besoin, ou le laisser ainsi pour l'instant
 
     showModalBottomSheet(
       context: context,
@@ -141,7 +98,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     child: FutureBuilder<List<Map<String, dynamic>>>(
                       future: supabase.from('comments').select().eq('post_id', postId).order('created_at', ascending: true),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.purple));
                         final comments = snapshot.data ?? [];
                         if (comments.isEmpty) {
                           return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey), SizedBox(height: 16), Text('Aucun commentaire', style: TextStyle(color: Colors.grey, fontSize: 16))]));
@@ -181,16 +138,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.send, color: AppColors.primary, size: 24),
+                          icon: const Icon(Icons.send, color: Colors.purple, size: 24),
                           onPressed: () async {
                             final text = commentController.text.trim();
                             if (text.isEmpty) return;
                             commentController.clear();
                             try {
-                              await supabase.from('comments').insert({'post_id': postId, 'content': text, 'user_name': userId != null ? _currentUserName : 'Utilisateur'});
+                              await supabase.from('comments').insert({'post_id': postId, 'content': text, 'user_name': userId != null ? currentUserName : 'Utilisateur'});
                               final totalComments = await supabase.from('comments').count(CountOption.exact).eq('post_id', postId);
                               await supabase.from('posts').update({'comments_count': totalComments}).eq('id', postId);
                               setModalState(() {});
+                              // Mettre à jour localement dans la liste
                               setState(() {
                                 if (postIndex < widget.posts.length) widget.posts[postIndex]['comments_count'] = totalComments;
                               });
@@ -210,23 +168,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       },
     );
   }
-
-    void _openTipDialog() {
-    // ✅ Utilise widget.creatorName ici aussi
-    showDialog(
-      context: context, 
-      builder: (context) => TipDialog(
-        creatorId: widget.creatorId, 
-        creatorName: widget.creatorName
-      )
-    );
-  }
-
-  void _handleShare(Map<String, dynamic> post) {
-    // Ici tu pourras appeler ton share_service
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lien du post copié !'), backgroundColor: Colors.green));
-  }
-
   String _formatCount(int count) {
     if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
     if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
@@ -239,44 +180,37 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       backgroundColor: Colors.black,
       body: PageView.builder(
         controller: _pageController,
-        scrollDirection: Axis.vertical, // ✅ DÉFILEMENT VERTICAL COMME LE HOME
+        scrollDirection: Axis.vertical,
         itemCount: widget.posts.length,
         itemBuilder: (context, index) {
           final post = widget.posts[index];
           final postId = post['id']?.toString() ?? '';
           final caption = post['caption'] ?? post['title'] ?? '';
           final mediaUrl = post['media_url'];
-          final creatorName = widget.creatorName; 
+          final creatorName = post['profiles']?['username'] ?? 'Créateur';
           final likesCount = post['likes_count'] ?? 0;
-          final commentsCount = post['comments_count'] ?? 0;
           final isLiked = _likedPostIds.contains(postId);
-          final createdAt = post['created_at'] != null ? DateTime.parse(post['created_at']) : DateTime.now();
 
           return Stack(
             fit: StackFit.expand,
             children: [
-              // 1. IMAGE/VIDÉO DE FOND
+              // 1. IMAGE/VIDÉO
               if (mediaUrl != null && mediaUrl.toString().isNotEmpty)
                 Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54)))
               else
                 Container(color: Colors.grey.shade900, child: const Center(child: Icon(Icons.image_not_supported, size: 50, color: Colors.white54))),
 
-              // 2. DÉGRADÉ ÉCLAIRCI (Pour mieux voir le contenu) ✅
+              // 2. DÉGRADÉ ÉCLAIRCI
               DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.3), // ✅ Moins sombre en haut
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.8), // ✅ Sombre en bas pour lire le texte
-                    ],
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [Colors.black.withOpacity(0.3), Colors.transparent, Colors.black.withOpacity(0.8)],
                   ),
                 ),
               ),
 
-              // 3. BOUTON RETOUR EN HAUT À GAUCHE
+              // 3. BOUTON RETOUR
               Positioned(
                 top: 40, left: 16,
                 child: GestureDetector(
@@ -289,19 +223,25 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 ),
               ),
 
-              // 4. BLOC DROITE : BOUTONS D'ACTION VERTICAUX (Comme le Home) ✅
+              // 4. BOUTONS VERTICAUX À DROITE
               Positioned(
                 right: 12, bottom: 100,
                 child: Column(
                   children: [
                     _buildSideButton(isLiked ? Icons.favorite : Icons.favorite_border, _formatCount(likesCount), () => _handleLike(postId, likesCount, index), iconColor: isLiked ? Colors.redAccent : Colors.white),
                     const SizedBox(height: 18),
-                    _buildSideButton(Icons.chat_bubble_rounded, _formatCount(commentsCount), () => _openComments(postId, commentsCount, index)),
+                                      _buildSideButton(Icons.chat_bubble_rounded, _formatCount(post['comments_count'] ?? 0), () {
+                      _openComments(postId, post['comments_count'] ?? 0, index); // ✅ Maintenant ça appelle ta super fonction !
+                    }),
                     const SizedBox(height: 18),
-_buildSideButton(Icons.local_cafe, 'Tip', () => _openTipDialog(), iconColor: Colors.orangeAccent),                    const SizedBox(height: 18),
-                    _buildSideButton(Icons.share, 'Partager', () => _handleShare(post), iconColor: Colors.white), // ✅ BOUTON PARTAGE
+                    _buildSideButton(Icons.local_cafe, 'Tip', () {
+                      showDialog(context: context, builder: (context) => TipDialog(creatorId: post['user_id'].toString(), creatorName: creatorName));
+                    }, iconColor: Colors.orangeAccent),
                     const SizedBox(height: 18),
-                    // Menu 3 points pour signaler ✅
+                    _buildSideButton(Icons.share, 'Partager', () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lien copié !'), backgroundColor: Colors.green));
+                    }, iconColor: Colors.white),
+                    const SizedBox(height: 18),
                     PopupMenuButton<String>(
                       color: const Color(0xFF1A1A1A),
                       icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
@@ -318,29 +258,15 @@ _buildSideButton(Icons.local_cafe, 'Tip', () => _openTipDialog(), iconColor: Col
                 ),
               ),
 
-              // 5. BLOC GAUCHE : CRÉATEUR + LÉGENDE
+              // 5. INFOS EN BAS À GAUCHE
               Positioned(
                 left: 16, right: 80, bottom: 40,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Text('@$creatorName', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                        const SizedBox(width: 10),
-                        if (!_isFollowing)
-                          GestureDetector(
-                            onTap: _handleFollow,
-                            child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(20)), child: const Text('Suivre', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
-                          )
-                        else
-                          const Icon(Icons.check_circle, color: Colors.grey, size: 20),
-                      ],
-                    ),
+                    Text('@$creatorName', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 10),
                     Text(caption.isEmpty ? '📝 (Pas de légende)' : caption, style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4)),
-                    const SizedBox(height: 8),
-                    Text('${createdAt.day}/${createdAt.month}/${createdAt.year}', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
                   ],
                 ),
               ),
@@ -359,10 +285,7 @@ _buildSideButton(Icons.local_cafe, 'Tip', () => _openTipDialog(), iconColor: Col
         child: Column(
           children: [
             Icon(icon, color: iconColor, size: 32),
-            if (label.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-            ],
+            if (label.isNotEmpty) ...[const SizedBox(height: 4), Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))],
           ],
         ),
       ),

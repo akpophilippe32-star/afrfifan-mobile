@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../services/dashboard_service.dart';
 
 /// Onglet 2 : Portefeuille
-/// Affiche l'historique complet des revenus et retraits
+/// Affiche l'historique complet des revenus, retraits et pourboires
 class WalletTab extends StatefulWidget {
   const WalletTab({super.key});
 
@@ -17,6 +17,7 @@ class _WalletTabState extends State<WalletTab> {
 
   List<Map<String, dynamic>> _transactions = [];
   List<Map<String, dynamic>> _withdrawals = [];
+  List<Map<String, dynamic>> _tips = []; // ✅ NOUVEAU : Pour les pourboires
   bool _isLoading = true;
 
   @override
@@ -32,8 +33,17 @@ class _WalletTabState extends State<WalletTab> {
     setState(() => _isLoading = true);
 
     try {
-      _transactions = await _dashboardService.getRecentTransactions(userId, limit: 50);
-      _withdrawals = await _dashboardService.getWithdrawalHistory(userId, limit: 50);
+      // ✅ Chargement en parallèle pour plus de rapidité
+      final results = await Future.wait([
+        _dashboardService.getRecentTransactions(userId, limit: 50),
+        _dashboardService.getWithdrawalHistory(userId, limit: 50),
+        _dashboardService.getReceivedTips(userId, limit: 50), // ✅ NOUVEAU
+      ]);
+
+      _transactions = results[0] as List<Map<String, dynamic>>;
+      _withdrawals = results[1] as List<Map<String, dynamic>>;
+      _tips = results[2] as List<Map<String, dynamic>>; // ✅ NOUVEAU
+
     } catch (e) {
       debugPrint('❌ Erreur chargement wallet: $e');
     } finally {
@@ -65,7 +75,7 @@ class _WalletTabState extends State<WalletTab> {
       );
     }
 
-    // Fusionner transactions et retraits pour un historique chronologique
+    // ✅ Fusionner transactions, retraits ET pourboires pour un historique chronologique
     List<Map<String, dynamic>> history = [];
 
     for (var tx in _transactions) {
@@ -74,8 +84,12 @@ class _WalletTabState extends State<WalletTab> {
     for (var w in _withdrawals) {
       history.add({...w, 'type': 'withdrawal', 'date': w['created_at']});
     }
+    // ✅ NOUVEAU : Ajouter les pourboires à l'historique
+    for (var tip in _tips) {
+      history.add({...tip, 'type': 'tip', 'date': tip['created_at']});
+    }
 
-    // Trier par date décroissante
+    // Trier par date décroissante (le plus récent en premier)
     history.sort((a, b) {
       final dateA = DateTime.tryParse(a['date']?.toString() ?? '') ?? DateTime(0);
       final dateB = DateTime.tryParse(b['date']?.toString() ?? '') ?? DateTime(0);
@@ -104,12 +118,48 @@ class _WalletTabState extends State<WalletTab> {
         itemCount: history.length,
         itemBuilder: (context, index) {
           final item = history[index];
-          final isIncome = item['type'] == 'income';
+          final type = item['type'];
+          final isIncome = type == 'income';
+          final isTip = type == 'tip';
           
           // Sécurisation de la conversion du montant en double
           final double amountValue = (item['amount'] is num) 
               ? (item['amount'] as num).toDouble() 
               : double.tryParse(item['amount']?.toString() ?? '0') ?? 0.0;
+
+          // ✅ Logique d'affichage dynamique selon le type
+          IconData iconData;
+          Color iconColor;
+          Color iconBgColor;
+          String titleText;
+          String amountText;
+          Color amountColor;
+
+          if (isIncome) {
+            iconData = Icons.arrow_downward;
+            iconColor = const Color(0xFF8B5CF6);
+            iconBgColor = const Color(0xFF8B5CF6).withOpacity(0.1);
+            titleText = 'Abonnement ${item['tier_type']?.toString().toUpperCase() ?? 'FAN'}';
+            amountText = '+ ${_formatMoney(amountValue)}';
+            amountColor = Colors.green;
+          } else if (isTip) {
+            iconData = Icons.local_cafe; // Icône café pour les pourboires
+            iconColor = Colors.orangeAccent;
+            iconBgColor = Colors.orangeAccent.withOpacity(0.1);
+            final fanName = item['profiles'] != null 
+                ? (item['profiles']['full_name'] ?? item['profiles']['username'] ?? 'Un fan')
+                : 'Un fan';
+            titleText = 'Pourboire de $fanName';
+            amountText = '+ ${_formatMoney(amountValue)}';
+            amountColor = Colors.green;
+          } else {
+            iconData = Icons.arrow_upward;
+            iconColor = Colors.orange;
+            iconBgColor = Colors.orange.withOpacity(0.1);
+            titleText = 'Retrait vers ${item['payment_method']?.toString().toUpperCase() ?? 'Compte'}';
+            amountText = '- ${_formatMoney(amountValue)}';
+            amountColor = Colors.white;
+          }
 
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -121,19 +171,14 @@ class _WalletTabState extends State<WalletTab> {
             ),
             child: Row(
               children: [
-                // Icône
+                // Icône dynamique
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: isIncome 
-                        ? const Color(0xFF8B5CF6).withOpacity(0.1) 
-                        : Colors.orange.withOpacity(0.1),
+                    color: iconBgColor,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
-                    isIncome ? Icons.arrow_downward : Icons.arrow_upward,
-                    color: isIncome ? const Color(0xFF8B5CF6) : Colors.orange,
-                  ),
+                  child: Icon(iconData, color: iconColor),
                 ),
                 const SizedBox(width: 16),
 
@@ -143,9 +188,7 @@ class _WalletTabState extends State<WalletTab> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isIncome 
-                            ? 'Abonnement ${item['tier_type']?.toString().toUpperCase() ?? 'FAN'}'
-                            : 'Retrait vers ${item['payment_method']?.toString().toUpperCase() ?? 'Compte'}',
+                        titleText,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
@@ -157,7 +200,7 @@ class _WalletTabState extends State<WalletTab> {
                         _formatDate(item['date']?.toString()),
                         style: const TextStyle(color: Colors.grey, fontSize: 12),
                       ),
-                      if (!isIncome) ...[
+                      if (!isIncome && !isTip) ...[
                         const SizedBox(height: 4),
                         Text(
                           'Statut: ${_getStatusText(item['status']?.toString())}',
@@ -172,11 +215,11 @@ class _WalletTabState extends State<WalletTab> {
                   ),
                 ),
 
-                // Montant
+                // Montant dynamique
                 Text(
-                  isIncome ? '+ ${_formatMoney(amountValue)}' : '- ${_formatMoney(amountValue)}',
+                  amountText,
                   style: TextStyle(
-                    color: isIncome ? Colors.green : Colors.white,
+                    color: amountColor,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -191,31 +234,21 @@ class _WalletTabState extends State<WalletTab> {
 
   String _getStatusText(String? status) {
     switch (status) {
-      case 'pending':
-        return 'En attente';
-      case 'approved':
-        return 'Approuvé';
-      case 'completed':
-        return 'Terminé';
-      case 'rejected':
-        return 'Refusé';
-      default:
-        return 'Inconnu';
+      case 'pending': return 'En attente';
+      case 'approved': return 'Approuvé';
+      case 'completed': return 'Terminé';
+      case 'rejected': return 'Refusé';
+      default: return 'Inconnu';
     }
   }
 
   Color _getStatusColor(String? status) {
     switch (status) {
-      case 'completed':
-        return Colors.green;
-      case 'approved':
-        return Colors.blue;
-      case 'pending':
-        return Colors.orange;
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.grey;
+      case 'completed': return Colors.green;
+      case 'approved': return Colors.blue;
+      case 'pending': return Colors.orange;
+      case 'rejected': return Colors.red;
+      default: return Colors.grey;
     }
   }
 }

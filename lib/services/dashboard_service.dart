@@ -13,7 +13,7 @@ class DashboardService {
       final response = await _supabase
           .from('wallets')
           .select('balance')
-          .eq('creator_id', creatorId) // ou 'user_id' selon ce que tu vois dans Supabase
+          .eq('creator_id', creatorId)
           .maybeSingle();
 
       if (response == null) return 0.0;
@@ -43,6 +43,50 @@ class DashboardService {
     }
   }
 
+  /// Récupère le nombre de nouveaux abonnés sur différentes périodes
+  Future<Map<String, int>> getSubscriberMetrics(String creatorId) async {
+    try {
+      final now = DateTime.now();
+      final startOfCurrentMonth = DateTime(now.year, now.month, 1);
+      final startOfLastMonth = DateTime(now.year, now.month - 1, 1);
+      final startOfSixMonthsAgo = DateTime(now.year, now.month - 6, 1);
+
+      // ✅ CORRECTION 1 : _supabase au lieu de supabase
+      final response = await _supabase
+          .from('subscriptions')
+          .select('start_date')
+          .eq('creator_id', creatorId)
+          .eq('status', 'active');
+
+      int currentMonth = 0;
+      int lastMonth = 0;
+      int last6Months = 0;
+
+      for (var sub in response) {
+        final startDate = DateTime.parse(sub['start_date']);
+        if (startDate.isAfter(startOfSixMonthsAgo)) {
+          last6Months++;
+          if (startDate.isAfter(startOfLastMonth)) {
+            lastMonth++;
+            if (startDate.isAfter(startOfCurrentMonth)) {
+              currentMonth++;
+            }
+          }
+        }
+      }
+
+      return {
+        'currentMonth': currentMonth,
+        'lastMonth': lastMonth,
+        'last6Months': last6Months,
+      };
+    } catch (e) {
+      print('❌ Erreur getSubscriberMetrics: $e'); 
+      return {'currentMonth': 0, 'lastMonth': 0, 'last6Months': 0};
+    }
+  }
+
+  // ✅ CORRECTION 2 : Fonction ajoutée car elle était appelée plus bas mais manquante
   Future<Map<String, int>> getSubscriberCounts(String creatorId) async {
     try {
       final response = await _supabase
@@ -50,21 +94,14 @@ class DashboardService {
           .select('tier_type')
           .eq('creator_id', creatorId)
           .eq('status', 'active');
-
-      int premiumCount = 0;
-      int proCount = 0;
-
+      
+      int premium = 0;
+      int pro = 0;
       for (var sub in response) {
-        final tier = sub['tier_type']?.toString() ?? '';
-        if (tier == 'premium') premiumCount++;
-        if (tier == 'pro') proCount++;
+        if (sub['tier_type'] == 'premium') premium++;
+        if (sub['tier_type'] == 'pro') pro++;
       }
-
-      return {
-        'premium': premiumCount,
-        'pro': proCount,
-        'total': premiumCount + proCount,
-      };
+      return {'premium': premium, 'pro': pro, 'total': premium + pro};
     } catch (e) {
       print('❌ Erreur getSubscriberCounts: $e');
       return {'premium': 0, 'pro': 0, 'total': 0};
@@ -131,28 +168,24 @@ class DashboardService {
     }
   }
 
-    Future<bool> createWithdrawal({
+  Future<bool> createWithdrawal({
     required String creatorId,
     required double amount,
     required String paymentMethod,
     required String accountNumber,
   }) async {
     try {
-      // 1. Vérifier le solde actuel
       final balance = await getWalletBalance(creatorId);
       if (balance < amount) throw Exception('Solde insuffisant');
       if (amount < 5000) throw Exception('Le montant minimum de retrait est de 5000 FCFA');
 
-      // ✅ AJOUT : Calculer le nouveau solde après déduction
       final newBalance = balance - amount;
 
-      // ✅ AJOUT : Mettre à jour immédiatement le portefeuille de l'utilisateur
       await _supabase
           .from('wallets')
           .update({'balance': newBalance})
           .eq('creator_id', creatorId);
 
-      // 2. Créer la demande de retrait (l'argent est déjà déduit)
       await _supabase.from('withdrawals').insert({
         'creator_id': creatorId,
         'amount': amount,
@@ -174,7 +207,6 @@ class DashboardService {
 
   Future<List<Map<String, dynamic>>> getActiveSubscribers(String creatorId, {String? tierFilter}) async {
     try {
-      // ✅ CORRECTION : Utilisation de PostgrestFilterBuilder pour éviter l'erreur de type Dart
       PostgrestFilterBuilder request = _supabase
           .from('subscriptions')
           .select('id, tier_type, start_date, end_date, fan_id, profiles:fan_id (id, username, full_name, avatar_url)')
@@ -222,7 +254,6 @@ class DashboardService {
     }
   }
 
-  /// ✅ NOUVELLE FONCTION AJOUTÉE : Métriques simples pour les stats
   Future<Map<String, dynamic>> getSimpleStats(String creatorId) async {
     try {
       final followers = await _supabase.from('follows').select('follower_id').eq('following_id', creatorId);
@@ -285,6 +316,81 @@ class DashboardService {
     } catch (e) {
       print('❌ Erreur updatePrices: $e');
       return false;
+    }
+  }
+    // ========================================
+  // 💸 POURBOIRES (TIPS)
+  // ========================================
+
+  /// 1. Envoyer un pourboire d'un fan à un créateur
+    /// Envoyer un pourboire via Mobile Money (sans wallet fan)
+    /// Envoyer un pourboire via Mobile Money (L'argent va directement au créateur)
+    /// Envoyer un pourboire via Mobile Money (L'argent va directement au créateur)
+     Future<bool> sendTip({
+    required String fanId,
+    required String fanPhoneNumber,
+    required String paymentMethod,
+    required String creatorId,
+    required double amount,
+    String? message,
+  }) async {
+    try {
+      // ✅ Appel de la fonction PostgreSQL (bypass RLS grâce à SECURITY DEFINER)
+      final response = await _supabase.rpc('process_tip', params: {
+        'p_creator_id': creatorId,
+        'p_fan_id': fanId,
+        'p_amount': amount,
+        'p_payment_method': paymentMethod,
+        'p_fan_phone': fanPhoneNumber,
+        'p_message': message,
+      });
+
+      if (response == true) {
+        print('✅ Succès : $amount FCFA ajoutés au wallet de $creatorId');
+        return true;
+      } else {
+        print('❌ Échec de la fonction process_tip');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Erreur sendTip: $e');
+      return false;
+    }
+  }
+
+  /// 2. Récupérer les pourboires REÇUS (pour le tableau de bord du créateur)
+  Future<List<Map<String, dynamic>>> getReceivedTips(String creatorId, {int limit = 50}) async {
+    try {
+      final response = await _supabase
+          .from('tips')
+          .select('*, profiles:fan_id (username, full_name, avatar_url)')
+          .eq('creator_id', creatorId)
+          .eq('status', 'completed')
+          .order('created_at', ascending: false)
+          .limit(limit);
+      
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('❌ Erreur getReceivedTips: $e');
+      return [];
+    }
+  }
+
+  /// 3. Récupérer les pourboires ENVOYÉS (pour l'historique du fan)
+  Future<List<Map<String, dynamic>>> getSentTips(String fanId, {int limit = 50}) async {
+    try {
+      final response = await _supabase
+          .from('tips')
+          .select('*, profiles:creator_id (username, full_name, avatar_url)')
+          .eq('fan_id', fanId)
+          .eq('status', 'completed')
+          .order('created_at', ascending: false)
+          .limit(limit);
+      
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('❌ Erreur getSentTips: $e');
+      return [];
     }
   }
 }

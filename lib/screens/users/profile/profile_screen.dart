@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'user_posts_feed_screen.dart';
 import '../settings/settings_screen.dart';
 import '../validation/personal_info_step.dart'; 
-import 'creator_dashboard_screen.dart'; // ✅ 1. IMPORT DU DASHBOARD CRÉATEUR (ajuste le chemin si besoin)
+import 'creator_dashboard_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -106,7 +106,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() { _profile?['avatar_url'] = publicUrl; });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Photo mise à jour !"), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Photo mise à jour !"), backgroundColor: Colors.white));
       }
     } catch (e) {
       debugPrint("🚨 ERREUR UPLOAD AVATAR : $e");
@@ -130,7 +130,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6))));
+      // ✅ CHANGÉ : Indicateur blanc
+      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.white)));
     }
 
     if (_errorMessage != null) {
@@ -140,25 +141,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 60),
+              const Icon(Icons.error_outline, color: Colors.white, size: 60),
               const SizedBox(height: 16),
-              Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent)),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.white)),
               const SizedBox(height: 24),
-              ElevatedButton(onPressed: _loadProfileData, child: const Text('Réessayer')),
+              ElevatedButton(
+                onPressed: _loadProfileData, 
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+                child: const Text('Réessayer'),
+              ),
             ],
           ),
         ),
       );
     }
 
-    // ✅ 2. LOGIQUE INTELLIGENTE : Vérifie si l'utilisateur est un créateur validé
     final bool isCreator = _profile?['is_verified'] == true && _profile?['role'] == 'creator';
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: RefreshIndicator(
         onRefresh: _loadProfileData,
-        color: const Color(0xFF8B5CF6),
+        color: Colors.white, // ✅ CHANGÉ : Blanc
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
@@ -167,11 +171,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(20, 50, 20, 30),
+                // ✅ CHANGÉ : Dégradé noir/gris très sombre, plus de violet
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Color(0xFF6B21A8), Color(0xFF1A1A2E)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                    colors: [Colors.black, Color(0xFF111111)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                   ),
                 ),
                 child: Column(
@@ -186,7 +191,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               height: 90,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFF8B5CF6), width: 3),
+                                border: Border.all(color: Colors.white, width: 2), // ✅ CHANGÉ : Bordure blanche
                               ),
                               child: CircleAvatar(
                                 backgroundColor: Colors.grey[900],
@@ -201,7 +206,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 width: 28,
                                 height: 28,
                                 decoration: BoxDecoration(
-                                  color: Colors.green,
+                                  color: Colors.black,
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 2),
                                 ),
@@ -228,7 +233,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     const SizedBox(width: 6),
                                     const Icon(
                                       Icons.verified,
-                                      color: Color(0xFF8B5CF6),
+                                      color: Colors.white, // ✅ CHANGÉ : Icône blanche
                                       size: 22,
                                     ),
                                   ],
@@ -237,7 +242,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 '@${_profile?['username'] ?? 'username'}',
-                                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                                style: const TextStyle(color: Colors.grey, fontSize: 14),
                               ),
                               const SizedBox(height: 8),
                               Container(
@@ -249,11 +254,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.calendar_today, color: Color(0xFF8B5CF6), size: 12),
+                                    const Icon(Icons.calendar_today, color: Colors.grey, size: 12), // ✅ CHANGÉ : Icône grise
                                     const SizedBox(width: 4),
                                     Text(
                                       'Membre depuis ${_getMonthYear()}',
-                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                      style: const TextStyle(color: Colors.grey, fontSize: 11),
                                     ),
                                   ],
                                 ),
@@ -269,30 +274,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 20),
                     
-                    // ✅ 3. BOUTON DYNAMIQUE (Change selon le statut)
+                    // ✅ CONSERVÉ : Le bouton principal reste VIOLET comme demandé
                     Row(
                       children: [
                         Expanded(
                           child: GestureDetector(
                             onTap: () {
                               if (isCreator) {
-                                // Si c'est un créateur, on ouvre le Dashboard
-                                Navigator.push(
-                                  context, 
-                                  MaterialPageRoute(builder: (context) => const CreatorDashboardScreen())
-                                );
+                                Navigator.push(context, MaterialPageRoute(builder: (context) => const CreatorDashboardScreen()));
                               } else {
-                                // Sinon, on ouvre le formulaire d'activation
-                                Navigator.push(
-                                  context, 
-                                  MaterialPageRoute(builder: (context) => const PersonalInfoStep())
-                                );
+                                Navigator.push(context, MaterialPageRoute(builder: (context) => const PersonalInfoStep()));
                               }
                             },
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF8B5CF6),
+                                color: const Color(0xFF8B5CF6), // ✅ VIOLET CONSERVÉ ICI
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Row(
@@ -305,7 +302,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    isCreator ? 'Tableau de bord' : 'Activer la monétisation',
+                                    isCreator ? 'Tableau de bord' : 'Activer le compte',
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                                   ),
                                 ],
@@ -317,7 +314,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Expanded(
                           child: GestureDetector(
                             onTap: () {
-                              // Action modifier profil (à implémenter plus tard)
+                              // Action modifier profil
                             },
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -460,11 +457,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         child: Column(
           children: [
-            Icon(icon, color: const Color(0xFF8B5CF6), size: 24),
+            Icon(icon, color: Colors.white, size: 24), // ✅ CHANGÉ : Icône blanche
             const SizedBox(height: 8),
             Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
             const SizedBox(height: 4),
-            Text(label, style: const TextStyle(color: Color(0xFF888888), fontSize: 12)),
+            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)), // ✅ CHANGÉ : Texte gris
           ],
         ),
       ),
@@ -482,7 +479,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                color: Colors.white.withOpacity(0.05), // ✅ CHANGÉ : Fond blanc très transparent
                 shape: BoxShape.circle,
               ),
             ),
@@ -491,20 +488,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.2),
+                    color: Colors.white.withOpacity(0.1), // ✅ CHANGÉ : Fond blanc transparent
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Icon(Icons.description, color: Color(0xFF8B5CF6), size: 48),
+                  child: const Icon(Icons.description, color: Colors.white, size: 48), // ✅ CHANGÉ : Icône blanche
                 ),
                 const SizedBox(height: 8),
                 Container(
                   width: 32,
                   height: 32,
                   decoration: const BoxDecoration(
-                    color: Color(0xFF8B5CF6),
+                    color: Colors.white, // ✅ CHANGÉ : Rond blanc
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.add, color: Colors.white, size: 20),
+                  child: const Icon(Icons.add, color: Colors.black, size: 20),
                 ),
               ],
             ),
@@ -529,17 +526,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFF8B5CF6)),
+              border: Border.all(color: Colors.white), // ✅ CHANGÉ : Bordure blanche
               borderRadius: BorderRadius.circular(20),
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.add, color: Color(0xFF8B5CF6), size: 20),
+                Icon(Icons.add, color: Colors.white, size: 20), // ✅ CHANGÉ : Icône blanche
                 SizedBox(width: 8),
                 Text(
                   'Créer un post',
-                  style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold, fontSize: 14),
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), // ✅ CHANGÉ : Texte blanc
                 ),
               ],
             ),
@@ -557,14 +554,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Icon(
             index == 0 ? Icons.grid_view : index == 1 ? Icons.lock_outline : Icons.person_outline,
-            color: isSelected ? const Color(0xFF8B5CF6) : Colors.grey,
+            color: isSelected ? Colors.white : Colors.grey, // ✅ CHANGÉ : Blanc si sélectionné, gris sinon
             size: 22,
           ),
           const SizedBox(height: 6),
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? const Color(0xFF8B5CF6) : Colors.grey,
+              color: isSelected ? Colors.white : Colors.grey, // ✅ CHANGÉ : Blanc si sélectionné
               fontSize: 12,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
@@ -574,7 +571,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               margin: const EdgeInsets.only(top: 6),
               height: 2,
               width: 20,
-              color: const Color(0xFF8B5CF6),
+              color: Colors.white, // ✅ CHANGÉ : Ligne blanche
             ),
         ],
       ),

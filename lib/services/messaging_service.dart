@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class MessagingService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  
+
   /// Envoyer un message à un utilisateur
   Future<bool> sendMessage({
     required String receiverId,

@@ -23,10 +23,15 @@ dependencies:
   agora_rtc_engine: ^6.3.2  
   record: ^5.2.0          
   path_provider: ^2.1.2   
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+
+# ✅ CE BLOC CORRIGE LE CONFLIT DE VERSIONS LORS DU BUILD
+dependency_overrides:
+  record_platform_interface: 1.4.0
 
 flutter:
   uses-material-design: true

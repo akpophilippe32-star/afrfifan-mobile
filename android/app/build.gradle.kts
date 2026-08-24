@@ -1,6 +1,6 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android") // ✅ AJOUTÉ : C'est LE plugin manquant qui compile ton MainActivity.kt !
+    id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -14,9 +14,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     defaultConfig {
         applicationId = "com.example.afrifan"
-        minSdk = flutter.minSdkVersion
+        minSdk = 23                          // ✅ exigé par le paquet d'enregistrement audio
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

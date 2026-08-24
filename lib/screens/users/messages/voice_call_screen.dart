@@ -1,0 +1,391 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class VoiceCallScreen extends StatefulWidget {
+  final String otherUserId;
+  final String otherUserName;
+  final String? otherUserAvatar;
+  final String? callId;
+  final bool isReceiver;
+
+  const VoiceCallScreen({
+    super.key,
+    required this.otherUserId,
+    required this.otherUserName,
+    this.otherUserAvatar,
+    this.callId,
+    this.isReceiver = false,
+  });
+
+  @override
+  State<VoiceCallScreen> createState() => _VoiceCallScreenState();
+}
+
+class _VoiceCallScreenState extends State<VoiceCallScreen> {
+  RtcEngine? _engine;
+  RealtimeChannel? _syncChannel;
+
+  bool _isMuted = false;
+  bool _isSpeakerOn = false;
+  bool _isJoined = false;
+  bool _isOtherUserJoined = false;
+  bool _isLeaving = false; // ✅ empêche de raccrocher / pop deux fois
+
+  Timer? _callTimer;
+  int _callDuration = 0;
+
+  final String appId = '18d7051c40f14cea8953b23824683c0b';
+  final Color primaryColor = const Color(0xFF6366F1);
+
+  @override
+  void initState() {
+    super.initState();
+    print("📞 [VoiceCallScreen] L'écran d'appel s'est ouvert !");
+
+    if (widget.isReceiver) {
+      _isOtherUserJoined = true;
+      _startTimer();
+    }
+
+    _setupSyncChannel();
+    _initAgora();
+  }
+
+  // ✅ CANAL DE SYNCHRONISATION SUPABASE
+  void _setupSyncChannel() {
+    final callId = widget.callId;
+    if (callId == null) return;
+
+    print("📡 [VoiceCallScreen] Création du canal de synchro...");
+
+    final channel = Supabase.instance.client.channel('call_sync_$callId');
+
+    channel.onBroadcast(
+      event: 'user_joined',
+      callback: (payload) {
+        print("✅ [VoiceCallScreen] L'autre utilisateur est connecté !");
+        if (mounted && !_isOtherUserJoined) {
+          setState(() => _isOtherUserJoined = true);
+          _startTimer();
+        }
+      },
+    );
+
+    channel.onBroadcast(
+      event: 'call_ended',
+      callback: (payload) {
+        print("📴 [VoiceCallScreen] L'autre utilisateur a raccroché !");
+        _callTimer?.cancel();
+        if (mounted && !_isLeaving) {
+          _isLeaving = true;
+          Navigator.of(context).pop();
+        }
+      },
+    );
+
+    channel.subscribe();
+    _syncChannel = channel;
+
+    if (widget.isReceiver) {
+      Future.delayed(const Duration(seconds: 1), () async {
+        if (!mounted) return;
+        try {
+          await channel.sendBroadcastMessage(
+            event: 'user_joined',
+            payload: {'user': 'receiver'},
+          );
+          print("📤 [VoiceCallScreen] Signal 'user_joined' envoyé !");
+        } catch (e) {
+          print("⚠️ [VoiceCallScreen] Envoi 'user_joined' échoué : $e");
+        }
+      });
+    }
+  }
+
+  Future<void> _initAgora() async {
+    print("🎙️ [VoiceCallScreen] Début de l'initialisation d'Agora...");
+    int attempts = 0;
+    bool success = false;
+
+    while (attempts < 3 && !success) {
+      attempts++;
+      try {
+        final status = await Permission.microphone.request();
+        if (status.isDenied) {
+          if (mounted) Navigator.pop(context);
+          return;
+        }
+
+        _engine = createAgoraRtcEngine();
+        await _engine!.initialize(RtcEngineContext(appId: appId));
+        success = true;
+      } catch (e) {
+        if (e.toString().contains('createIrisApiEngine') && attempts < 3) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        } else {
+          if (mounted) Navigator.pop(context);
+          return;
+        }
+      }
+    }
+
+    if (!success) return;
+    await _engine!.enableAudio();
+
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id ?? 'anon';
+    final List<String> ids = [currentUserId, widget.otherUserId]..sort();
+    final channelId = 'call_${ids[0]}_${ids[1]}';
+
+    _engine?.registerEventHandler(
+      RtcEngineEventHandler(
+        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          print("🎉 [VoiceCallScreen] Agora : l'autre a rejoint ! UID: $remoteUid");
+          if (mounted && !_isOtherUserJoined) {
+            setState(() => _isOtherUserJoined = true);
+            _startTimer();
+          }
+        },
+        onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
+          print("📞 [VoiceCallScreen] Agora : l'autre a raccroché !");
+          _leaveChannel();
+        },
+      ),
+    );
+
+    print("📡 [VoiceCallScreen] Connexion à la salle : $channelId");
+    await _engine!.joinChannel(
+      token: "",
+      channelId: channelId,
+      uid: 0,
+      options: const ChannelMediaOptions(
+        channelProfile: ChannelProfileType.channelProfileCommunication,
+        clientRoleType: ClientRoleType.clientRoleBroadcaster,
+      ),
+    );
+
+    if (mounted) {
+      setState(() => _isJoined = true);
+    }
+  }
+
+  void _startTimer() {
+    _callTimer?.cancel();
+    _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) setState(() => _callDuration++);
+    });
+  }
+
+  String _formatDuration(int seconds) {
+    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
+    final secs = (seconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$secs';
+  }
+
+  Future<void> _toggleSpeaker() async {
+    setState(() => _isSpeakerOn = !_isSpeakerOn);
+    await _engine?.setEnableSpeakerphone(_isSpeakerOn);
+  }
+
+  Future<void> _toggleMute() async {
+    setState(() => _isMuted = !_isMuted);
+    await _engine?.muteLocalAudioStream(_isMuted);
+  }
+
+  // ✅ MÉTHODE ULTRA-LÉGÈRE POUR RACCROCHER (SANS AWAIT BLOQUANT)
+    // ✅ MÉTHODE CORRIGÉE : Trace d'appel + Fermeture immédiate
+  Future<void> _leaveChannel() async {
+    if (_isLeaving) return; 
+    _isLeaving = true;
+
+    print("📞 [VoiceCallScreen] Raccrochage...");
+    _callTimer?.cancel();
+
+    // 1. ✅ CRÉER LA TRACE D'APPEL DANS LE CHAT (Comme WhatsApp)
+    final callDurationFormatted = '${(_callDuration ~/ 60).toString().padLeft(2, '0')}:${(_callDuration % 60).toString().padLeft(2, '0')}';
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (currentUserId != null) {
+      Supabase.instance.client.from('messages').insert({
+        'sender_id': currentUserId,
+        'receiver_id': widget.otherUserId,
+        'type': 'call_log',
+        'content': 'Appel vocal terminé • $callDurationFormatted',
+        'created_at': DateTime.now().toIso8601String(),
+      }).catchError((e) => print("⚠️ Erreur trace appel: $e"));
+    }
+
+    // 2. Envoyer le signal de fin SANS attendre (fire and forget)
+    final channel = _syncChannel;
+    if (channel != null) {
+      channel.sendBroadcastMessage(
+        event: 'call_ended',
+        payload: {'user': widget.isReceiver ? 'receiver' : 'caller'},
+      ).catchError((e) => print("⚠️ Erreur envoi signal: $e"));
+      
+      channel.unsubscribe().catchError((e) => print("⚠️ Erreur unsubscribe: $e"));
+    }
+
+    // 3. Couper Agora SANS attendre
+    final engineToCleanup = _engine;
+    _engine = null; // On libère la référence immédiatement
+
+    if (engineToCleanup != null) {
+      engineToCleanup.leaveChannel().catchError((e) => print("⚠️ Erreur leaveChannel: $e"));
+      engineToCleanup.release().catchError((e) => print("⚠️ Erreur release: $e"));
+    }
+
+    // 4. Fermer l'écran IMMÉDIATEMENT
+    if (mounted) {
+      print("🔙 [VoiceCallScreen] Fermeture de l'écran...");
+      Navigator.of(context).pop();
+    }
+  }
+
+  // ✅ LE VRAI NETTOYAGE DE SÉCURITÉ SE FAIT ICI
+  @override
+  void dispose() {
+    print("🗑️ [VoiceCallScreen] Nettoyage automatique (dispose)...");
+    _callTimer?.cancel();
+    
+    final channel = _syncChannel;
+    if (channel != null) {
+      try { channel.unsubscribe(); } catch (e) {}
+    }
+
+    final engine = _engine;
+    if (engine != null) {
+      try {
+        engine.leaveChannel();
+        engine.release();
+      } catch (e) {}
+    }
+    super.dispose();
+  }
+
+  Widget _buildControlButton({
+    required IconData icon,
+    required Color iconColor,
+    required Color bgColor,
+    required VoidCallback onTap,
+    double size = 64,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: bgColor,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white24, width: 2),
+        ),
+        child: Icon(icon, color: iconColor, size: size * 0.5),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                    onPressed: _leaveChannel,
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      CircleAvatar(
+                        radius: 60,
+                        backgroundColor: const Color(0xFF1C1C1F),
+                        backgroundImage: widget.otherUserAvatar != null
+                            ? NetworkImage(widget.otherUserAvatar!)
+                            : null,
+                        child: widget.otherUserAvatar == null
+                            ? const Icon(Icons.person, color: Colors.white, size: 60)
+                            : null,
+                      ),
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: _isOtherUserJoined ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.black, width: 3),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    widget.otherUserName,
+                    style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isOtherUserJoined ? _formatDuration(_callDuration) : 'En attente de réponse...',
+                    style: TextStyle(
+                      color: _isOtherUserJoined ? primaryColor : Colors.grey.shade400,
+                      fontSize: 20,
+                      fontWeight: _isOtherUserJoined ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 60.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildControlButton(
+                    icon: _isMuted ? Icons.mic_off : Icons.mic,
+                    iconColor: _isMuted ? Colors.red : Colors.white,
+                    bgColor: const Color(0xFF1C1C1F),
+                    onTap: _toggleMute,
+                  ),
+                  const SizedBox(width: 24),
+                  _buildControlButton(
+                    icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_down,
+                    iconColor: _isSpeakerOn ? primaryColor : Colors.white,
+                    bgColor: const Color(0xFF1C1C1F),
+                    onTap: _toggleSpeaker,
+                  ),
+                  const SizedBox(width: 24),
+                  GestureDetector(
+                    onTap: _leaveChannel,
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                      child: const Icon(Icons.call_end, color: Colors.white, size: 36),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

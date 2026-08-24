@@ -20,6 +20,9 @@ dependencies:
   carousel_slider: ^5.0.0
   permission_handler: ^11.3.1
   fl_chart: ^0.69.0 
+  agora_rtc_engine: ^6.3.2  
+  record: ^5.0.4          
+  path_provider: ^2.1.2   
 dev_dependencies:
   flutter_test:
     sdk: flutter

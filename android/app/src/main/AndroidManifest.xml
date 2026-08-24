@@ -5,7 +5,9 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
-    
+        <!-- Permissions pour Agora (Appels Vocaux) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <!-- Permission pour l'audio (slideshow avec musique) -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
     

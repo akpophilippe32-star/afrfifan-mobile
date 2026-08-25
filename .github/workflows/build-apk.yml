@@ -37,11 +37,13 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # ✅ MODIFIÉ : Génère des APK séparés par processeur (beaucoup plus légers)
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
 
-      - name: Upload APK Artifact
+      # ✅ MODIFIÉ : Upload tous les petits APK générés dans un seul dossier
+      - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: afrifan-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: afrifan-release-apks
+          path: build/app/outputs/flutter-apk/*.apk

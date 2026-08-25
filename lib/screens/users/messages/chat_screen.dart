@@ -7,7 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-
+import 'video_call_screen.dart'; // ✅ AJOUTE ÇA
 import '../../../services/messaging_service.dart';
 import '../../../theme/app_colors.dart';
 import '../creator/creator_profile_screen.dart';
@@ -615,8 +615,45 @@ ScaffoldMessenger.of(context).showSnackBar(
               }
             },
           ),
-          IconButton(icon: const Icon(Icons.videocam_outlined, color: AppColors.primary), onPressed: () => _onAttachmentTap('Appels vidéo')),
-        ],
+          IconButton(
+            icon: const Icon(Icons.videocam_outlined, color: AppColors.primary),
+            onPressed: () async {
+              final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+              if (currentUserId != null) {
+                try {
+                  // 1. Créer l'appel vidéo dans Supabase
+                  final response = await Supabase.instance.client.from('calls').insert({
+                    'caller_id': currentUserId,
+                    'receiver_id': widget.otherUserId,
+                    'status': 'ongoing',
+                    'call_type': 'video', // ✅ On précise que c'est une vidéo
+                  }).select();
+                  
+                  final callId = response[0]['id'];
+                  
+                  // 2. Ouvrir l'écran Vidéo !
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => VideoCallScreen(
+                        otherUserId: widget.otherUserId,
+                        otherUserName: widget.otherUserName,
+                        otherUserAvatar: widget.otherUserAvatar,
+                        callId: callId,
+                        isReceiver: false,
+                      ),
+                    ),
+                  );
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red)
+                    );
+                  }
+                }
+              }
+            },
+          ),        ],
       ),
       body: Column(
         children: [

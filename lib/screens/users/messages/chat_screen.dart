@@ -474,7 +474,7 @@ ScaffoldMessenger.of(context).showSnackBar(
     });
   }
 
-  Future<void> _sendVoiceMessage() async {
+    Future<void> _sendVoiceMessage() async {
     if (_currentRecordingPath == null) return;
     
     setState(() => _isSending = true);
@@ -482,9 +482,34 @@ ScaffoldMessenger.of(context).showSnackBar(
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.m4a';
       final fileBytes = await File(_currentRecordingPath!).readAsBytes();
       
-      await Supabase.instance.client.storage.from('voice_messages').uploadBinary(fileName, fileBytes);
-      final audioUrl = Supabase.instance.client.storage.from('voice_messages').getPublicUrl(fileName);
+      // 1. Upload vers Supabase Storage
+      await Supabase.instance.client.storage
+          .from('voice_messages')
+          .uploadBinary(fileName, fileBytes);
 
+      final audioUrl = Supabase.instance.client.storage
+          .from('voice_messages')
+          .getPublicUrl(fileName);
+
+      // ✅ 2. CRÉER LE MESSAGE OPTIMISTIQUE (comme pour les textes)
+      final optimisticVoice = {
+        'id': 'temp_voice_${DateTime.now().millisecondsSinceEpoch}',
+        'sender_id': _currentUserId,
+        'receiver_id': widget.otherUserId,
+        'type': 'voice',
+        'content': audioUrl,
+        'duration': _recordingSeconds,
+        'is_read': false,
+        'created_at': DateTime.now().toIso8601String(),
+      };
+
+      // ✅ 3. L'AJOUTER À L'INTERFACE TOUT DE SUITE
+      setState(() {
+        _messages.add(optimisticVoice);
+      });
+      _scrollToBottom();
+
+      // ✅ 4. ENVOYER À SUPABASE (en arrière-plan)
       await Supabase.instance.client.from('messages').insert({
         'sender_id': _currentUserId,
         'receiver_id': widget.otherUserId,
@@ -494,25 +519,21 @@ ScaffoldMessenger.of(context).showSnackBar(
         'is_read': false,
         'created_at': DateTime.now().toIso8601String(),
       });
-      _scrollToBottom();
       
+      // 5. Reset de l'interface
       setState(() {
         _isRecordingStopped = false;
         _recordingSeconds = 0;
         _currentRecordingPath = null;
       });
-   } catch (e) {
-  print("❌ Erreur envoi vocal : $e");
-  if (mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Erreur: $e"), 
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 5),
-      ),
-    );
-  }
-}finally {
+    } catch (e) {
+      print("❌ Erreur envoi vocal : $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erreur: $e"), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
       if (mounted) setState(() => _isSending = false);
     }
   }

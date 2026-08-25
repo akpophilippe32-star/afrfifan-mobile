@@ -432,6 +432,21 @@ class _MessagesScreenState extends State<MessagesScreen> {
     final lastMessage = c['last_message']?.toString() ?? '';
     final lastMessageTime = c['last_message_time']?.toString() ?? '';
     final isMine = _asBool(c['last_message_is_mine']);
+      final lastMessageType = c['last_message_type']?.toString() ?? 'text';
+  final lastMessageDuration = c['last_message_duration'];
+  
+  // ✅ FORMATAGE DU MESSAGE SELON LE TYPE
+  String formattedLastMessage;
+  if (lastMessageType == 'voice') {
+    final duration = lastMessageDuration ?? 0;
+    final minutes = (duration ~/ 60).toString().padLeft(2, '0');
+    final seconds = (duration % 60).toString().padLeft(2, '0');
+    formattedLastMessage = '🎤 Message vocal • $minutes:$seconds';
+  } else if (lastMessageType == 'call_log') {
+    formattedLastMessage = '📞 Appel vocal';
+  } else {
+    formattedLastMessage = lastMessage;
+  }
     final unread = _asInt(c['unread_count']);
     final isPremium =
         _asBool((c['other_user_profile'] as Map<String, dynamic>?)?['is_premium']);
@@ -511,8 +526,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    isMine ? 'Vous : $lastMessage' : lastMessage,
+               Text(
+  isMine ? 'Vous : $formattedLastMessage' : formattedLastMessage,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

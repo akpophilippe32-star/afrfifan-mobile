@@ -115,17 +115,18 @@ class MessagingService {
       // Construire la liste finale des conversations
       final List<Map<String, dynamic>> conversations = [];
 
-      conversationsMap.forEach((otherUserId, lastMessage) {
+            conversationsMap.forEach((otherUserId, lastMessage) {
         conversations.add({
           'other_user_id': otherUserId,
           'other_user_profile': profilesMap[otherUserId],
           'last_message': lastMessage['content'],
+          'last_message_type': lastMessage['type'] ?? 'text',          // ✅ AJOUTÉ
+          'last_message_duration': lastMessage['duration'] ?? 0,       // ✅ AJOUTÉ
           'last_message_time': lastMessage['created_at'],
           'last_message_is_mine': lastMessage['sender_id'] == user.id,
           'unread_count': unreadCountMap[otherUserId] ?? 0,
         });
       });
-
       // Trier par date du dernier message (plus récent en premier)
       conversations.sort((a, b) {
         final timeA = DateTime.parse(a['last_message_time'] as String);

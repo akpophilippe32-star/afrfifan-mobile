@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:agora_token_generator/agora_token_generator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String otherUserId;
@@ -28,7 +29,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   RtcEngine? _engine;
   RealtimeChannel? _syncChannel;
   
-  // ✅ Contrôleurs pour la vidéo (Local et Distant)
   VideoViewController? _localViewController;
   VideoViewController? _remoteViewController;
 
@@ -47,11 +47,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void initState() {
     super.initState();
-    _setupSyncChannel(); // ✅ Ajouté pour la synchro
+    _setupSyncChannel();
     _initAgoraVideo();
   }
 
-  // ✅ 1. SYNCHRONISATION ENTRE LES TÉLÉPHONES
   void _setupSyncChannel() {
     final callId = widget.callId;
     if (callId == null) return;
@@ -89,21 +88,40 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
   }
 
-  // ✅ 2. INITIALISATION AGORA (AUDIO + VIDÉO)
   Future<void> _initAgoraVideo() async {
     print("🎥 [VideoCallScreen] Initialisation de la vidéo...");
+    
+    // ✅ 1. DEMANDER LES PERMISSIONS
+    final permissions = await [Permission.microphone, Permission.camera].request();
+    if (permissions[Permission.camera] != PermissionStatus.granted ||
+        permissions[Permission.microphone] != PermissionStatus.granted) {
+      print("❌ [VideoCallScreen] Permissions caméra ou micro refusées !");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Veuillez autoriser la caméra et le micro dans les paramètres")),
+        );
+      }
+      return;
+    }
     
     _engine = createAgoraRtcEngine();
     await _engine!.initialize(RtcEngineContext(appId: appId));
     
     await _engine!.enableAudio();
-    await _engine!.enableVideo(); 
+    await _engine!.enableVideo();
     await _engine!.setEnableSpeakerphone(true);
 
+    // ✅ 2. CONFIGURER LA VIDÉO LOCALE
     _localViewController = VideoViewController(
       rtcEngine: _engine!,
       canvas: const VideoCanvas(uid: 0),
     );
+
+    // 🔥 CORRECTION MAJEURE : Démarrer l'aperçu local pour que la caméra s'affiche sur les 2 téléphones
+    await _engine!.startPreview();
+    
+    // Forcer le rafraîchissement de l'UI pour afficher immédiatement la petite fenêtre
+    if (mounted) setState(() {});
 
     _engine?.registerEventHandler(
       RtcEngineEventHandler(
@@ -111,6 +129,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           print("🎉 [VideoCallScreen] L'autre a rejoint ! UID: $remoteUid");
           if (mounted) {
             setState(() => _isOtherUserJoined = true);
+            // ✅ 3. CONFIGURER LA VIDÉO DISTANTE
             _remoteViewController = VideoViewController.remote(
               rtcEngine: _engine!,
               canvas: VideoCanvas(uid: remoteUid),
@@ -151,7 +170,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (mounted) setState(() => _isJoined = true);
   }
 
-  // ✅ 3. GESTION DU RACCROCHAGE ET SAUVEGARDE
   Future<void> _leaveChannel() async {
     if (_isLeaving) return; 
     _isLeaving = true;
@@ -188,7 +206,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  // ✅ 4. TIMER
   void _startTimer() {
     _callTimer?.cancel();
     _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -202,17 +219,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     return '$minutes:$secs';
   }
 
-  // ✅ 5. INTERFACE UTILISATEUR (STYLE FACETIME)
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // VIDÉO DISTANTE (Plein écran)
+          // ✅ VIDÉO DISTANTE (Plein écran)
           if (_isOtherUserJoined && _remoteViewController != null)
             Positioned.fill(
-child: AgoraVideoView(controller: _remoteViewController!),
+              child: AgoraVideoView(controller: _remoteViewController!),
             )
           else
             Center(
@@ -237,7 +253,8 @@ child: AgoraVideoView(controller: _remoteViewController!),
               ),
             ),
 
-          // MA VIDÉO LOCALE (Petit rectangle en haut à droite)
+          // ✅ MA VIDÉO LOCALE (Petit rectangle en haut à droite)
+          // On l'affiche dès que _localViewController est créé (grâce au setState ajouté plus haut)
           if (_localViewController != null)
             Positioned(
               top: 60,
@@ -253,11 +270,12 @@ child: AgoraVideoView(controller: _remoteViewController!),
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-child: AgoraVideoView(controller: _localViewController!),                ),
+                  child: AgoraVideoView(controller: _localViewController!),
+                ),
               ),
             ),
 
-          // BOUTONS DE CONTRÔLE (En bas)
+          // ✅ BOUTONS DE CONTRÔLE (En bas)
           Positioned(
             bottom: 60,
             left: 0,
@@ -282,7 +300,7 @@ child: AgoraVideoView(controller: _localViewController!),                ),
                 ),
                 const SizedBox(width: 24),
                 GestureDetector(
-                  onTap: _leaveChannel, // ✅ CORRECTEMENT LIÉ ICI
+                  onTap: _leaveChannel,
                   child: Container(
                     width: 72,
                     height: 72,

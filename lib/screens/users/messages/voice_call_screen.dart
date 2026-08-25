@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'package:agora_token_generator/agora_token_generator.dart';
 class VoiceCallScreen extends StatefulWidget {
   final String otherUserId;
   final String otherUserName;
@@ -105,16 +105,13 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     }
   }
 
-    Future<void> _initAgora() async {
+            Future<void> _initAgora() async {
     print("🎙️ [VoiceCallScreen] Début de l'initialisation d'Agora...");
     
-    _engine = RtcEngine.createWithConfig(const RtcEngineConfig(
-      appId: appId,
-      channelProfile: ChannelProfileType.channelProfileCommunication,
-      audioLoglevel: LogLevel.logLevelOff,
-      videoLoglevel: LogLevel.logLevelOff,
-    ));
-
+    // ✅ 1. Initialisation correcte pour agora_rtc_engine ^6.3.2
+    _engine = createAgoraRtcEngine();
+    await _engine!.initialize(RtcEngineContext(appId: appId));
+    
     await _engine!.enableAudio();
     await _engine!.enableLocalAudio(true);
     await _engine!.setEnableSpeakerphone(true);
@@ -123,10 +120,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     _engine?.registerEventHandler(
       RtcEngineEventHandler(
         onError: (ErrorCodeType error, String msg) {
-          print(" [AGORA ERREUR] Code: $error | Message: $msg");
+          print("❌ [AGORA ERREUR] Code: $error | Message: $msg");
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-          print(" [VoiceCallScreen] Agora : l'autre a rejoint ! UID: $remoteUid");
+          print("🎉 [VoiceCallScreen] Agora : l'autre a rejoint ! UID: $remoteUid");
           if (mounted && !_isOtherUserJoined) {
             setState(() => _isOtherUserJoined = true);
             _startTimer();
@@ -144,33 +141,35 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       ),
     );
 
-    print("📡 [VoiceCallScreen] Connexion à la salle : $channelId");
+    // ✅ 2. Utiliser widget.callId (le vrai nom de ton canal)
+    final currentChannelId = widget.callId ?? 'default_channel';
+    print("📡 [VoiceCallScreen] Connexion à la salle : $currentChannelId");
     
-    // ✅ APPELER L'EDGE FUNCTION SUPABASE POUR GÉNÉRER LE TOKEN
+    // ✅ 3. GÉNÉRATION DU TOKEN EN LOCAL (La solution infaillible)
     String token = "";
     try {
-      print("🔄 [VoiceCallScreen] Génération du token Agora...");
+      print("🔄 [VoiceCallScreen] Génération du token Agora en local...");
       
-      final response = await Supabase.instance.client.functions.invoke(
-        'generate-agora-token',
-        body: {'channelName': channelId, 'uid': 0},
+      final appCertificate = 'ea5e4a39245d4849bfd84a99d5100632'; // Ton certificat
+
+      // ✅ CORRECTION : Utiliser les arguments nommés exacts du package agora_token_generator
+      token = RtcTokenBuilder.buildTokenWithUid(
+        appId: appId,
+        appCertificate: appCertificate,
+        channelName: currentChannelId,
+        uid: 0, // UID 0 (anonyme)
+        tokenExpireSeconds: 3600, // Expiration dans 1 heure (le package gère le calcul tout seul)
       );
       
-      print("📥 [VoiceCallScreen] Réponse Supabase: ${response.data}");
-      
-      if (response.data != null && response.data['success'] == true) {
-        token = response.data['token'];
-        print("✅ [VoiceCallScreen] Token généré avec succès !");
-      } else {
-        print("⚠️ [VoiceCallScreen] Erreur génération token: ${response.data}");
-      }
+      print("✅ [VoiceCallScreen] Token généré en local avec succès !");
     } catch (e) {
-      print("❌ [VoiceCallScreen] Erreur appel Edge Function: $e");
+      print("❌ [VoiceCallScreen] Erreur génération token local: $e");
     }
     
+    // ✅ 4. Rejoindre le canal avec le token dynamique
     await _engine!.joinChannel(
       token: token,
-      channelId: channelId,
+      channelId: currentChannelId,
       uid: 0,
       options: const ChannelMediaOptions(
         channelProfile: ChannelProfileType.channelProfileCommunication,

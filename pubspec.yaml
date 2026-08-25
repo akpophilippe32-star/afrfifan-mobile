@@ -23,7 +23,7 @@ dependencies:
   agora_rtc_engine: ^6.3.2
   record: ^5.2.0
   path_provider: ^2.1.2
-
+  agora_token_generator: ^0.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

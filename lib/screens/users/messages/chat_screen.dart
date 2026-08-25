@@ -44,6 +44,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ✅ VARIABLES POUR LES MESSAGES VOCAUX
   bool _isRecording = false;
+  bool _isRecordingStopped = false; 
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
   String? _currentRecordingPath;
@@ -53,7 +54,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Map<String, dynamic>? _replyTo;
   Map<String, dynamic>? _editingMessage;
-
   String? _currentUserId;
   RealtimeChannel? _realtimeChannel;
 
@@ -320,8 +320,13 @@ class _ChatScreenState extends State<ChatScreen> {
               _menuTile(Icons.copy, 'Copier', Colors.white, () {
                 Navigator.pop(context);
                 Clipboard.setData(ClipboardData(text: content));
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Message copié'), backgroundColor: Colors.grey.shade800, behavior: SnackBarBehavior.floating));
-              }),
+ScaffoldMessenger.of(context).showSnackBar(
+  SnackBar(
+    content: const Text('Message copié'),
+    backgroundColor: Colors.grey.shade800,
+    behavior: SnackBarBehavior.floating,
+  ),
+);              }),
               if (isMine) _menuTile(Icons.edit_outlined, 'Modifier', Colors.white, () {
                 Navigator.pop(context);
                 setState(() {
@@ -422,41 +427,61 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ========================================================================
-  // ✅ LOGIQUE DES MESSAGES VOCAUX
+  // ✅ LOGIQUE DES MESSAGES VOCAUX (NETTOYÉE)
   // ========================================================================
 
   Future<void> _startRecording() async {
     if (await _audioRecorder.hasPermission()) {
       final directory = await getTemporaryDirectory();
       _currentRecordingPath = '${directory.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await _audioRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 128000, sampleRate: 44100), path: _currentRecordingPath!);
-      setState(() { _isRecording = true; _recordingSeconds = 0; });
+      
+      await _audioRecorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 128000, sampleRate: 44100),
+        path: _currentRecordingPath!,
+      );
+      
+      setState(() {
+        _isRecording = true;
+        _isRecordingStopped = false;
+        _recordingSeconds = 0;
+      });
+      
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         setState(() => _recordingSeconds++);
       });
     }
   }
 
-  Future<void> _stopRecordingAndSend() async {
+  Future<void> _stopRecording() async {
     _recordingTimer?.cancel();
     final path = await _audioRecorder.stop();
-    if (path != null && _recordingSeconds >= 1) {
-      await _sendVoiceMessage(path, _recordingSeconds);
-    }
-    setState(() { _isRecording = false; _recordingSeconds = 0; _currentRecordingPath = null; });
+    
+    setState(() {
+      _isRecording = false;
+      _isRecordingStopped = true; 
+      _currentRecordingPath = path;
+    });
   }
 
   void _cancelRecording() {
     _recordingTimer?.cancel();
     _audioRecorder.stop();
-    setState(() { _isRecording = false; _recordingSeconds = 0; _currentRecordingPath = null; });
+    setState(() {
+      _isRecording = false;
+      _isRecordingStopped = false;
+      _recordingSeconds = 0;
+      _currentRecordingPath = null;
+    });
   }
 
-  Future<void> _sendVoiceMessage(String filePath, int duration) async {
+  Future<void> _sendVoiceMessage() async {
+    if (_currentRecordingPath == null) return;
+    
     setState(() => _isSending = true);
     try {
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.m4a';
-      final fileBytes = await File(filePath).readAsBytes();
+      final fileBytes = await File(_currentRecordingPath!).readAsBytes();
+      
       await Supabase.instance.client.storage.from('voice_messages').uploadBinary(fileName, fileBytes);
       final audioUrl = Supabase.instance.client.storage.from('voice_messages').getPublicUrl(fileName);
 
@@ -465,14 +490,22 @@ class _ChatScreenState extends State<ChatScreen> {
         'receiver_id': widget.otherUserId,
         'type': 'voice',
         'content': audioUrl,
-        'duration': duration,
+        'duration': _recordingSeconds,
         'is_read': false,
         'created_at': DateTime.now().toIso8601String(),
       });
       _scrollToBottom();
+      
+      setState(() {
+        _isRecordingStopped = false;
+        _recordingSeconds = 0;
+        _currentRecordingPath = null;
+      });
     } catch (e) {
       print("❌ Erreur envoi vocal : $e");
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erreur lors de l'envoi du vocal"), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erreur lors de l'envoi du vocal"), backgroundColor: Colors.red));
+      }
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -600,28 +633,86 @@ class _ChatScreenState extends State<ChatScreen> {
                   else if (_replyTo != null)
                     _contextBar(icon: Icons.reply, title: 'Réponse à ${_replyTo!['name']}', content: _replyTo!['content']?.toString() ?? '', onCancel: () => setState(() => _replyTo = null)),
                   
-                  // ✅ BARRE D'ENREGISTREMENT OU BARRE NORMALE
+                  // ✅ 1. BARRE D'ENREGISTREMENT EN COURS
                   if (_isRecording)
                     Container(
                       color: Colors.black,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          GestureDetector(onTap: _cancelRecording, child: const Icon(Icons.delete_outline, color: Colors.red, size: 32)),
-                          const SizedBox(width: 16),
+                          GestureDetector(
+                            onTap: _cancelRecording,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.circle),      
+                        child: const Icon(Icons.delete_outline, color: Colors.red, size: 28),
+                            ),
+                          ),
                           Expanded(
-                            child: Row(
+                            child: Column(
                               children: [
-                                Container(width: 12, height: 12, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
-                                const SizedBox(width: 8),
-                                Text('${(_recordingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_recordingSeconds % 60).toString().padLeft(2, '0')}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                                Container(width: 16, height: 16, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${(_recordingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_recordingSeconds % 60).toString().padLeft(2, '0')}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                                ),
+                                const Text('Enregistrement...', style: TextStyle(color: Colors.grey, fontSize: 12)),
                               ],
                             ),
                           ),
-                          const Text('Relâchez pour envoyer', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                          GestureDetector(
+                            onTap: _stopRecording,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                              child: const Icon(Icons.stop, color: Colors.white, size: 28),
+                            ),
+                          ),
                         ],
                       ),
                     )
+                  // ✅ 2. BARRE APRÈS ARRÊT (En attente d'envoi)
+                  else if (_isRecordingStopped)
+                    Container(
+                      color: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          GestureDetector(
+                            onTap: _cancelRecording,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.circle),                              child: const Icon(Icons.delete_outline, color: Colors.red, size: 28),
+                            ),
+                          ),
+                          Expanded(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.mic, color: AppColors.primary, size: 24),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Message vocal • ${(_recordingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_recordingSeconds % 60).toString().padLeft(2, '0')}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: _sendVoiceMessage,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                              child: const Icon(Icons.send, color: Colors.white, size: 28),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  // ✅ 3. BARRE NORMALE (Texte + Micro ou Envoi)
                   else
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -669,14 +760,10 @@ class _ChatScreenState extends State<ChatScreen> {
                           else if (_editingMessage != null)
                             GestureDetector(onTap: _applyEdit, child: Container(width: 40, height: 40, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: const Icon(Icons.check, color: Colors.white, size: 22)))
                           else if (_hasText)
-                            // ✅ BOUTON ENVOYER (quand il y a du texte)
                             GestureDetector(onTap: _sendMessage, child: Container(width: 40, height: 40, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: const Icon(Icons.send, color: Colors.white, size: 20)))
                           else
-                            // ✅ BOUTON MICRO (quand il n'y a pas de texte)
                             GestureDetector(
-                              onTapDown: (_) => _startRecording(),
-                              onTapUp: (_) => _stopRecordingAndSend(),
-                              onTapCancel: _cancelRecording,
+                              onTap: _startRecording,
                               child: Container(width: 40, height: 40, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: const Icon(Icons.mic, color: Colors.white, size: 24)),
                             ),
                         ],
@@ -781,7 +868,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final isEdited = message['is_edited'] == true;
     final duration = message['duration'] != null ? message['duration'].toString() : '0:00';
 
-    // ✅ 1. TRACE D'APPEL
     if (messageType == 'call_log') {
       return Center(
         child: Container(
@@ -793,7 +879,6 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
-    // ✅ 2. MESSAGE VOCAL
     if (messageType == 'voice') {
       final isPlaying = _playingMessageId == message['id'];
       return Padding(
@@ -825,7 +910,6 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
-    // ✅ 3. MESSAGE TEXTE NORMAL
     final isSticker = _isEmojiOnly(content);
     final replyName = message['reply_to_name']?.toString();
     final replyContent = message['reply_to_content']?.toString();

@@ -501,12 +501,18 @@ ScaffoldMessenger.of(context).showSnackBar(
         _recordingSeconds = 0;
         _currentRecordingPath = null;
       });
-    } catch (e) {
-      print("❌ Erreur envoi vocal : $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erreur lors de l'envoi du vocal"), backgroundColor: Colors.red));
-      }
-    } finally {
+   } catch (e) {
+  print("❌ Erreur envoi vocal : $e");
+  if (mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Erreur: $e"), 
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
+}finally {
       if (mounted) setState(() => _isSending = false);
     }
   }

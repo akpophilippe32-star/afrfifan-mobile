@@ -105,59 +105,71 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     }
   }
 
-  Future<void> _initAgora() async {
+    Future<void> _initAgora() async {
     print("🎙️ [VoiceCallScreen] Début de l'initialisation d'Agora...");
-    int attempts = 0;
-    bool success = false;
+    
+    _engine = RtcEngine.createWithConfig(const RtcEngineConfig(
+      appId: appId,
+      channelProfile: ChannelProfileType.channelProfileCommunication,
+      audioLoglevel: LogLevel.logLevelOff,
+      videoLoglevel: LogLevel.logLevelOff,
+    ));
 
-    while (attempts < 3 && !success) {
-      attempts++;
-      try {
-        final status = await Permission.microphone.request();
-        if (status.isDenied) {
-          if (mounted) Navigator.pop(context);
-          return;
-        }
-
-        _engine = createAgoraRtcEngine();
-        await _engine!.initialize(RtcEngineContext(appId: appId));
-        success = true;
-      } catch (e) {
-        if (e.toString().contains('createIrisApiEngine') && attempts < 3) {
-          await Future.delayed(const Duration(milliseconds: 500));
-        } else {
-          if (mounted) Navigator.pop(context);
-          return;
-        }
-      }
-    }
-
-    if (!success) return;
     await _engine!.enableAudio();
-
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id ?? 'anon';
-    final List<String> ids = [currentUserId, widget.otherUserId]..sort();
-    final channelId = 'call_${ids[0]}_${ids[1]}';
+    await _engine!.enableLocalAudio(true);
+    await _engine!.setEnableSpeakerphone(true);
+    await _engine!.muteLocalAudioStream(false);
 
     _engine?.registerEventHandler(
       RtcEngineEventHandler(
+        onError: (ErrorCodeType error, String msg) {
+          print(" [AGORA ERREUR] Code: $error | Message: $msg");
+        },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-          print("🎉 [VoiceCallScreen] Agora : l'autre a rejoint ! UID: $remoteUid");
+          print(" [VoiceCallScreen] Agora : l'autre a rejoint ! UID: $remoteUid");
           if (mounted && !_isOtherUserJoined) {
             setState(() => _isOtherUserJoined = true);
             _startTimer();
           }
         },
         onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
-          print("📞 [VoiceCallScreen] Agora : l'autre a raccroché !");
-          _leaveChannel();
+          print("👋 [VoiceCallScreen] Agora : l'autre a quitté ! UID: $remoteUid");
+          if (mounted) {
+            setState(() => _isOtherUserJoined = false);
+          }
+        },
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          print("✅ [VoiceCallScreen] Agora : rejoint avec succès ! UID: ${connection.localUid}");
         },
       ),
     );
 
     print("📡 [VoiceCallScreen] Connexion à la salle : $channelId");
+    
+    // ✅ APPELER L'EDGE FUNCTION SUPABASE POUR GÉNÉRER LE TOKEN
+    String token = "";
+    try {
+      print("🔄 [VoiceCallScreen] Génération du token Agora...");
+      
+      final response = await Supabase.instance.client.functions.invoke(
+        'generate-agora-token',
+        body: {'channelName': channelId, 'uid': 0},
+      );
+      
+      print("📥 [VoiceCallScreen] Réponse Supabase: ${response.data}");
+      
+      if (response.data != null && response.data['success'] == true) {
+        token = response.data['token'];
+        print("✅ [VoiceCallScreen] Token généré avec succès !");
+      } else {
+        print("⚠️ [VoiceCallScreen] Erreur génération token: ${response.data}");
+      }
+    } catch (e) {
+      print("❌ [VoiceCallScreen] Erreur appel Edge Function: $e");
+    }
+    
     await _engine!.joinChannel(
-      token: "007eJxTYHBo4asLuuF+3uDb9BmX1XynrZtcK54Svmr+H/YSgdDX1kUKDIYWKeYGpobJJgZphibJqYkWlqbGSUbGFkYmZhbGyQZJgu29WQ2BjAzb0yMZmBgYwRDE52FISc3N103OSMzLS81hgMqBZFgYDA0MDAEPjCJ6",
+      token: token,
       channelId: channelId,
       uid: 0,
       options: const ChannelMediaOptions(
@@ -167,7 +179,11 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     );
 
     if (mounted) {
-      setState(() => _isJoined = true);
+      setState(() {
+        _isJoined = true;
+        _isSpeakerOn = true;
+        _isMuted = false;
+      });
     }
   }
 

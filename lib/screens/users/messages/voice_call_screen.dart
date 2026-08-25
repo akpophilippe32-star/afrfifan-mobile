@@ -157,7 +157,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
     print("📡 [VoiceCallScreen] Connexion à la salle : $channelId");
     await _engine!.joinChannel(
-      token: "",
+      token: "007eJxTYHBo4asLuuF+3uDb9BmX1XynrZtcK54Svmr+H/YSgdDX1kUKDIYWKeYGpobJJgZphibJqYkWlqbGSUbGFkYmZhbGyQZJgu29WQ2BjAzb0yMZmBgYwRDE52FISc3N103OSMzLS81hgMqBZFgYDA0MDAEPjCJ6",
       channelId: channelId,
       uid: 0,
       options: const ChannelMediaOptions(

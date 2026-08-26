@@ -5,7 +5,9 @@ import 'wallet_tab.dart';
 import 'subscribers_tab.dart';
 import 'stats_tab.dart';
 import 'settings_tab.dart';
-import 'tips_tab.dart'; // ✅ NOUVEAU
+import 'tips_tab.dart';
+import 'go_live_screen.dart'; // ✅ AJOUTÉ : Import de l'écran pour lancer le Live
+
 class CreatorDashboardScreen extends StatefulWidget {
   const CreatorDashboardScreen({super.key});
 
@@ -51,6 +53,15 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     Navigator.pop(context); // Ferme le drawer après le clic
   }
 
+  // ✅ NOUVEAU : Méthode pour ouvrir l'écran du Live
+  void _goLive() {
+    Navigator.pop(context); // Ferme le menu
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const GoLiveScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -70,8 +81,6 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
         ),
       ),
-      // IndexedStack garde l'état, mais si vous souhaitez forcer un rechargement 
-      // à chaque changement d'onglet, vous pouvez remplacer IndexedStack par un simple switch(index).
       body: IndexedStack(
         index: _selectedIndex,
         children: const [
@@ -81,7 +90,6 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
           StatsTab(),
           SettingsTab(),
           TipsTab(),
-
         ],
       ),
     );
@@ -131,8 +139,25 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                 _buildDrawerItem(2, Icons.people_outline, 'Abonnés'),
                 _buildDrawerItem(3, Icons.bar_chart_outlined, 'Statistiques'),
                 _buildDrawerItem(4, Icons.settings_outlined, 'Paramètres'),
-                _buildDrawerItem(5, Icons.local_cafe, 'Pourboires'), // ✅ NOUVEAU
-
+                _buildDrawerItem(5, Icons.local_cafe, 'Pourboires'),
+                
+                // ✅ SÉPARATEUR POUR METTRE EN VALEUR L'ACTION LIVE
+                const Divider(height: 32, color: Colors.white24, indent: 20, endIndent: 20),
+                
+                // ✅ BOUTON "LANCER UN LIVE" (Style spécial pour attirer l'œil)
+                ListTile(
+                  leading: const Icon(Icons.videocam, color: Colors.redAccent, size: 28),
+                  title: const Text(
+                    '🔴 Lancer un Live',
+                    style: TextStyle(
+                      color: Colors.redAccent, 
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.redAccent, size: 16),
+                  onTap: _goLive,
+                ),
               ],
             ),
           ),
@@ -158,8 +183,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   }
 
   String _getAppBarTitle() {
-    const titles = ['Vue d\'ensemble', 'Portefeuille', 'Abonnés', 'Statistiques', 'Paramètres', 'Pourboires']; // ✅ Ajout de 'Pourboires'
+    const titles = ['Vue d\'ensemble', 'Portefeuille', 'Abonnés', 'Statistiques', 'Paramètres', 'Pourboires'];
     return titles[_selectedIndex];
   }
-  
 }

@@ -9,6 +9,7 @@ import '../creator/subscription_payment_screen.dart'; // ✅ Pour le paiement d'
 import '../../../widgets/tip_dialog.dart'; // ✅ Pour le pourboire
 import '../../../services/share_service.dart';
 import '../../../widgets/report_dialog.dart'; // ✅ AJOUT : Pour le signalement
+import 'watch_live_screen.dart'; // ✅ Ajouté pour accéder à l'écran du Live
 class DiscoveryScreen extends StatefulWidget {
   const DiscoveryScreen({super.key});
 
@@ -341,7 +342,81 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     final postId = post['id'].toString();
     // shareService.shareFreePost(postId: postId, creatorName: creatorName, caption: caption, imageUrl: post['media_url']);
   }
+  // ✅ NOUVEAU : Méthode pour rejoindre un Live dynamiquement
+    // ✅ NOUVEAU : Méthode pour rejoindre un Live dynamiquement (CORRIGÉE)
+  // ✅ NOUVEAU : Méthode pour rejoindre un Live dynamiquement (BLINDÉE CONTRE LES DOUBLONS)
+  Future<void> _joinLive() async {
+    try {
+      // 1. Chercher s'il y a au moins un live en cours
+      final lives = await Supabase.instance.client
+          .from('live_streams')
+          .select('id, creator_id, title')
+          .eq('status', 'live')
+          .limit(1);
 
+      if (lives.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('🔴 Aucun live en cours pour le moment. Reviens plus tard !'),
+            backgroundColor: const Color(0xFF424242),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      final live = lives[0];
+      final creatorId = live['creator_id'] as String;
+
+      // 2. Récupérer le profil (Sécurisé : on prend juste le premier si doublon)
+      final profiles = await Supabase.instance.client
+          .from('profiles')
+          .select('username, full_name, avatar_url')
+          .eq('id', creatorId)
+          .limit(1);
+      
+      final profile = profiles.isNotEmpty ? profiles[0] : null;
+      final creatorName = profile != null 
+          ? (profile['full_name'] ?? profile['username'] ?? 'Créateur') 
+          : 'Créateur';
+      final creatorAvatar = profile != null ? profile['avatar_url'] : null;
+
+      // 3. Vérifier l'abonnement (Sécurisé : on prend juste le premier si doublon)
+      bool isSubscribed = false;
+      if (_currentUserId != null) {
+        final subs = await Supabase.instance.client
+            .from('subscriptions')
+            .select('id')
+            .eq('fan_id', _currentUserId!)
+            .eq('creator_id', creatorId)
+            .eq('status', 'active')
+            .limit(1);
+        
+        isSubscribed = subs.isNotEmpty;
+      }
+
+      // 4. Ouvrir l'écran du Live
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => WatchLiveScreen(
+            liveId: live['id'],
+            creatorName: creatorName,
+            creatorAvatar: creatorAvatar,
+            isSubscribed: isSubscribed,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ Erreur lors de la recherche de live : $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erreur de connexion au live'), backgroundColor: Colors.red),
+      );
+    }
+  }
   Widget _buildPostsPageView(List<Map<String, dynamic>> postsList) {
     if (postsList.isEmpty) {
       return Center(
@@ -595,8 +670,26 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 28),
-                      Row(
+// ✅ BOUTON LIVE (Remplace le panier)
+// ✅ BOUTON LIVE DYNAMIQUE
+GestureDetector(
+  onTap: _joinLive, // <-- Appelle directement la méthode qu'on vient de créer
+  child: const Row(
+    children: [
+      Icon(Icons.videocam, color: Colors.redAccent, size: 28),
+      SizedBox(width: 6),
+      Text(
+        'LIVE',
+        style: TextStyle(
+          color: Colors.redAccent, 
+          fontWeight: FontWeight.bold, 
+          fontSize: 14,
+          letterSpacing: 1.2,
+        ),
+      ),
+    ],
+  ),
+),                     Row(
                         children: [
                           _buildTopTab('Abonnés', 0),
                           const SizedBox(width: 20),

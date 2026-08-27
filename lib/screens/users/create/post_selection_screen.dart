@@ -10,13 +10,13 @@ import '../create/models/draft_post.dart';
 class PostSelectionScreen extends StatefulWidget {
   final String mediaPath;
   final String mediaType;
-  final XFile xFile; // ✅ On rend xFile obligatoire maintenant
+  final XFile? xFile; // ✅ Optionnel (null pour les images IA)
 
   const PostSelectionScreen({
     super.key,
     required this.mediaPath,
     required this.mediaType,
-    required this.xFile,
+    this.xFile,
   });
 
   @override
@@ -39,7 +39,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     setState(() => _isLoading = true);
     try {
       if (widget.mediaType == 'video') {
-        _videoController = VideoPlayerController.network(widget.mediaPath) // ✅ network marche mieux pour les blobs web
+        _videoController = VideoPlayerController.network(widget.mediaPath)
           ..initialize().then((_) {
             if (mounted) {
               setState(() {});
@@ -49,8 +49,11 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
             }
           });
       } else {
-        // ✅ Marche sur Web et Mobile
-        _imageBytes = await widget.xFile.readAsBytes();
+        if (widget.xFile != null) {
+          // ✅ C'est un fichier local (caméra/galerie)
+          _imageBytes = await widget.xFile!.readAsBytes();
+        }
+        // ✅ Si xFile est null, c'est une URL (IA), on l'affichera avec Image.network plus bas
         if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
@@ -65,7 +68,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     super.dispose();
   }
 
-  // ✅ VRAIE PUBLICATION STORY (WEB & MOBILE)
+  // ✅ VRAIE PUBLICATION STORY
   Future<void> _publishToStory() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -73,16 +76,22 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       return;
     }
 
+    // ✅ Gestion des images IA (pas de XFile local pour l'instant en story)
+    if (widget.xFile == null) {
+      _showError('Publication en Story d\'image IA bientôt disponible. Utilisez le Feed !');
+      return;
+    }
+
     setState(() => _isPublishing = true);
     try {
       final storyId = await contentService.publishStory(
-        mediaFile: widget.xFile, // ✅ On passe le XFile directement
+        mediaFile: widget.xFile!, // ✅ On est maintenant sûr qu'il n'est pas null
         userId: user.id,
       );
 
       if (storyId != null && mounted) {
-        Navigator.pop(context); // Ferme sélection
-        Navigator.pop(context); // Ferme caméra
+        Navigator.pop(context); 
+        Navigator.pop(context); 
         _showSuccess('✅ Story publiée avec succès !');
       } else {
         _showError('Erreur lors de la publication');
@@ -95,7 +104,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     }
   }
 
-  // ✅ VRAIE PUBLICATION FEED (WEB & MOBILE)
+  // ✅ VRAIE PUBLICATION FEED (Fonctionne parfaitement avec les URL IA !)
   Future<void> _publishToFeed({String? title, String? caption}) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -107,7 +116,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     try {
       final draft = DraftPost();
       draft.postType = widget.mediaType == 'video' ? 'video' : 'image';
-      draft.mediaPaths = [widget.mediaPath];
+      draft.mediaPaths = [widget.mediaPath]; // ✅ L'URL de l'IA est parfaitement gérée ici
       draft.caption = caption ?? '';
       if (title != null && title.isNotEmpty) {
         draft.caption = '$title\n\n${draft.caption}';
@@ -247,8 +256,24 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       if (_videoController != null && _videoController!.value.isInitialized) {
         return AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: VideoPlayer(_videoController!));
       }
-    } else if (_imageBytes != null) {
+    } else if (widget.xFile != null && _imageBytes != null) {
+      // ✅ Fichier local (caméra/galerie)
       return Image.memory(_imageBytes!, fit: BoxFit.cover, width: double.infinity, height: double.infinity);
+    } else {
+      // ✅ C'est une URL (ex: image générée par IA)
+      return Image.network(
+        widget.mediaPath,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return const Center(child: Icon(Icons.error, color: Colors.white54));
+        },
+      );
     }
     return const Center(child: Icon(Icons.error, color: Colors.white54));
   }

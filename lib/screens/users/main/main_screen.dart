@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_colors.dart';
 import '../home/discovery_screen.dart';
 import '../explore/explore_screen.dart';
-import '../create/create_content_screen.dart';
+import '../create/camera_screen.dart'; // ✅ NOUVEAU : On importe la caméra style Snapchat
 import '../messages/messages_screen.dart';
 import '../profile/profile_screen.dart';
 
@@ -16,20 +16,19 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
-  // Supprimer les deux lignes GlobalKey qui causaient l'erreur
-  
   final List<Widget> _screens = [
     const DiscoveryScreen(),
     const ExploreScreen(),
     const MessagesScreen(),
     const ProfileScreen(),
   ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: IndexedStack(
-        index: _currentIndex > 1 ? _currentIndex - 1 : _currentIndex, // Ajustement d'index
+        index: _currentIndex > 1 ? _currentIndex - 1 : _currentIndex,
         children: _screens,
       ),
       bottomNavigationBar: Container(
@@ -44,7 +43,7 @@ class _MainScreenState extends State<MainScreen> {
           onTap: (index) async {
             // Si c'est le bouton "+" (index 2)
             if (index == 2) {
-              await _openCreateScreen();
+              await _openCameraScreen();
               return; // On ne change pas l'onglet actif
             }
 
@@ -71,15 +70,15 @@ class _MainScreenState extends State<MainScreen> {
               activeIcon: Icon(Icons.explore),
               label: 'Explorer',
             ),
-            // 3. Post (+) - Style TikTok
+            // 3. Créer (+) - Style TikTok/Snapchat
             BottomNavigationBarItem(
               icon: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
                     colors: [
                       Colors.purple,
-                      AppColors.primary,
+                      Color(0xFF8B5CF6), // Couleur Afrifan
                     ],
                   ),
                   borderRadius: BorderRadius.circular(8),
@@ -90,7 +89,7 @@ class _MainScreenState extends State<MainScreen> {
                   size: 28,
                 ),
               ),
-              label: '', // Pas de label pour le bouton +
+              label: '', 
             ),
             // 4. Messages
             BottomNavigationBarItem(
@@ -146,16 +145,16 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  /// Ouvre l'écran de création style TikTok
-  Future<void> _openCreateScreen() async {
-    final result = await Navigator.push<bool>(
+  /// ✅ Ouvre la caméra style Snapchat
+  Future<void> _openCameraScreen() async {
+    await Navigator.push(
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) {
-          return const CreateContentScreen();
+          return const CameraScreen(); // ✅ NOUVEAU : On ouvre la caméra
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Animation slide depuis le bas
+          // Animation slide depuis le bas (style modal moderne)
           const begin = Offset(0.0, 1.0);
           const end = Offset.zero;
           const curve = Curves.easeOutCubic;
@@ -168,30 +167,6 @@ class _MainScreenState extends State<MainScreen> {
           );
         },
         transitionDuration: const Duration(milliseconds: 300),
-      ),
-    );
-
-    // Si le post a été publié avec succès, on peut rafraîchir les écrans
-    if (result == true && mounted) {
-      _showSuccessMessage();
-    }
-  }
-
-  /// Afficher un message de succès après publication
-  void _showSuccessMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Publication réussie !'),
-          ],
-        ),
-        backgroundColor: Colors.green.shade700,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
       ),
     );
   }

@@ -1,26 +1,26 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart'; // ✅ Indispensable pour XFile
 import '../screens/users/create/models/draft_post.dart';
 
 class ContentService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Upload une image dans Supabase Storage
-  /// Retourne l'URL publique de l'image
-  Future<String?> uploadImage(File imageFile, String userId) async {
+  /// Upload une image (Compatible Web & Mobile)
+  Future<String?> uploadImage(XFile imageFile, String userId) async {
     try {
-      // Générer un nom de fichier unique
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'post_${userId}_$timestamp.jpg';
       final filePath = '$userId/$fileName';
 
-      // Upload dans le bucket post-images
+      // ✅ ASTUCE WEB/MOBILE : On lit les octets (bytes) au lieu d'utiliser dart:io File
+      final bytes = await imageFile.readAsBytes();
+
+      // ✅ uploadBinary accepte les Uint8List, ce qui marche partout
       await _supabase.storage
           .from('post-images')
-          .upload(filePath, imageFile);
+          .uploadBinary(filePath, bytes);
 
-      // Obtenir l'URL publique
       final publicUrl = _supabase.storage
           .from('post-images')
           .getPublicUrl(filePath);
@@ -33,22 +33,20 @@ class ContentService {
     }
   }
 
-  /// Upload une musique dans Supabase Storage
-  /// Retourne l'URL publique de la musique
-  Future<String?> uploadMusic(File musicFile, String userId) async {
+  /// Upload une musique (Compatible Web & Mobile)
+  Future<String?> uploadMusic(XFile musicFile, String userId) async {
     try {
-      // Générer un nom de fichier unique
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final extension = musicFile.path.split('.').last;
+      final extension = musicFile.name.split('.').last;
       final fileName = 'music_${userId}_$timestamp.$extension';
       final filePath = '$userId/$fileName';
 
-      // Upload dans le bucket post-music
+      final bytes = await musicFile.readAsBytes();
+
       await _supabase.storage
           .from('post-music')
-          .upload(filePath, musicFile);
+          .uploadBinary(filePath, bytes);
 
-      // Obtenir l'URL publique
       final publicUrl = _supabase.storage
           .from('post-music')
           .getPublicUrl(filePath);
@@ -61,8 +59,7 @@ class ContentService {
     }
   }
 
-  /// Publie un post (photo simple ou slideshow)
-  /// Retourne l'ID du post créé, ou null si erreur
+  /// Publie un post (Compatible Web & Mobile)
   Future<String?> publishPost(DraftPost draft) async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
@@ -71,43 +68,37 @@ class ContentService {
     }
 
     try {
-      // 1. Upload des images
-      debugPrint('📤 Upload de ${draft.mediaPaths.length} image(s)...');
+      debugPrint('📤 Upload de ${draft.mediaPaths.length} média(s)...');
       final List<String> imageUrls = [];
 
       for (final mediaPath in draft.mediaPaths) {
-        final file = File(mediaPath);
-        final url = await uploadImage(file, user.id);
+        // ✅ On crée un XFile à partir du chemin (marche sur mobile et web)
+        final xFile = XFile(mediaPath);
+        final url = await uploadImage(xFile, user.id);
         if (url == null) {
-          debugPrint('❌ Échec upload image');
+          debugPrint('❌ Échec upload média');
           return null;
         }
         imageUrls.add(url);
       }
 
-      // 2. Upload de la musique si slideshow
       String? musicUrl;
       if (draft.isSlideshow && draft.musicPath != null) {
         debugPrint('🎵 Upload de la musique...');
-        final musicFile = File(draft.musicPath!);
-        musicUrl = await uploadMusic(musicFile, user.id);
-        if (musicUrl == null) {
-          debugPrint('❌ Échec upload musique');
-          return null;
-        }
+        final musicXFile = XFile(draft.musicPath!);
+        musicUrl = await uploadMusic(musicXFile, user.id);
       }
 
-      // 3. Créer le post dans la table posts
       debugPrint('💾 Création du post...');
       final postData = {
-  'user_id': user.id,
-  'media_url': imageUrls.first,
-  'media_type': draft.postType,
-  'content': draft.caption,  // ← Changé de 'caption' à 'content'
-  'caption': draft.caption,
-  'music_url': musicUrl,
-  'slide_duration': draft.slideDuration,
-};
+        'user_id': user.id,
+        'media_url': imageUrls.first,
+        'media_type': draft.postType,
+        'content': draft.caption,
+        'caption': draft.caption,
+        'music_url': musicUrl,
+        'slide_duration': draft.slideDuration,
+      };
 
       final postResponse = await _supabase
           .from('posts')
@@ -118,11 +109,8 @@ class ContentService {
       final postId = postResponse['id'] as String;
       debugPrint('✅ Post créé avec ID: $postId');
 
-      // 4. Si slideshow, ajouter toutes les images dans post_media
       if (draft.isSlideshow && imageUrls.length > 1) {
-        debugPrint('🖼️ Ajout des ${imageUrls.length} images au slideshow...');
         final mediaList = <Map<String, dynamic>>[];
-
         for (int i = 0; i < imageUrls.length; i++) {
           mediaList.add({
             'post_id': postId,
@@ -130,15 +118,49 @@ class ContentService {
             'media_order': i,
           });
         }
-
         await _supabase.from('post_media').insert(mediaList);
-        debugPrint('✅ Médias ajoutés au post');
       }
 
-      debugPrint('🎉 Publication réussie !');
       return postId;
     } catch (e) {
       debugPrint('❌ Erreur publication: $e');
+      return null;
+    }
+  }
+
+  /// ✅ NOUVEAU : Publie une Story (Compatible Web & Mobile)
+  Future<String?> publishStory({
+    required XFile mediaFile,
+    String? textContent,
+    String? backgroundColor,
+    required String userId,
+  }) async {
+    try {
+      String mediaType = 'image';
+      
+      // Upload du média
+      final mediaUrl = await uploadImage(mediaFile, userId);
+      if (mediaUrl == null) return null;
+
+      // Insertion en base
+      final storyData = {
+        'creator_id': userId,
+        'media_url': mediaUrl,
+        'media_type': mediaType,
+        'text_content': textContent,
+        'background_color': backgroundColor,
+      };
+
+      final response = await _supabase
+          .from('stories')
+          .insert(storyData)
+          .select('id')
+          .single();
+
+      debugPrint('✅ Story publiée avec ID: ${response['id']}');
+      return response['id'] as String;
+    } catch (e) {
+      debugPrint('❌ Erreur publication story: $e');
       return null;
     }
   }

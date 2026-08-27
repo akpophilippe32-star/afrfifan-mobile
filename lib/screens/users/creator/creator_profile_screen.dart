@@ -6,9 +6,10 @@ import '../../../services/notification_service.dart';
 import '../../../theme/app_colors.dart';
 import '../messages/chat_screen.dart';
 import 'post_detail_screen.dart';
-import 'subscription_payment_screen.dart'; // ✅ Import de l'écran de paiement
-import '../../../widgets/tip_dialog.dart'; // ✅ Import de la fenêtre de pourboire
-import '../../../widgets/report_dialog.dart'; // ✅ AJOUT : Pour le signalement de profil
+import 'subscription_payment_screen.dart';
+import '../../../widgets/tip_dialog.dart';
+import '../../../widgets/report_dialog.dart';
+import '../profile/view_story_screen.dart'; // ✅ Décommente cette ligne
 class CreatorProfileScreen extends StatefulWidget {
   final String creatorId;
 
@@ -33,6 +34,10 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   int _followersCount = 0;
   int _postsCount = 0;
   int _selectedTab = 0;
+
+  // ✅ NOUVEAU : Variables pour les Stories
+  List<Map<String, dynamic>> _stories = [];
+  bool _hasActiveStories = false;
 
   // ✅ NOUVEAU : On stocke tout l'abonnement actuel au lieu d'un simple booléen
   Map<String, dynamic>? _currentSubscription;
@@ -59,7 +64,8 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
         _loadCreatorPosts(),
         _checkIfFollowing(),
         _loadFollowersCount(),
-        _checkSubscriptionStatus(), // ✅ Vérifie l'abonnement et calcule les jours
+        _checkSubscriptionStatus(),
+        _loadCreatorStories(), // ✅ AJOUTÉ : Charge les stories en même temps
       ]);
     } catch (e) {
       debugPrint('❌ Erreur chargement données créateur: $e');
@@ -69,21 +75,39 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     }
   }
 
-  // ✅ NOUVEAU : Récupère le type d'abo et calcule les jours restants
-    Future<void> _checkSubscriptionStatus() async {
+  // ✅ NOUVEAU : Charger les stories actives du créateur (moins de 24h grâce à la RLS)
+  Future<void> _loadCreatorStories() async {
+    try {
+      final response = await supabase
+          .from('stories')
+          .select('id, media_url, media_type, text_content, background_color, created_at')
+          .eq('creator_id', widget.creatorId)
+          .order('created_at', ascending: true); // Du plus ancien au plus récent pour la lecture
+
+      if (mounted) {
+        setState(() {
+          _stories = List<Map<String, dynamic>>.from(response ?? []);
+          _hasActiveStories = _stories.isNotEmpty;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur chargement stories: $e');
+    }
+  }
+
+  Future<void> _checkSubscriptionStatus() async {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) return;
 
     try {
-      // ✅ CORRECTION : On ajoute .order et .limit(1) pour ne prendre que le plus récent
       final response = await supabase
           .from('subscriptions')
           .select('*') 
           .eq('fan_id', currentUser.id)
           .eq('creator_id', widget.creatorId)
           .eq('status', 'active')
-          .order('created_at', ascending: false) // Trie du plus récent au plus ancien
-          .limit(1) // Ne prend que le premier
+          .order('created_at', ascending: false)
+          .limit(1)
           .maybeSingle(); 
 
       if (mounted && response != null) {
@@ -206,7 +230,24 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-    void _openPostDetail(int index) {
+  // ✅ NOUVEAU : Ouvrir le lecteur de stories
+    void _openStoriesViewer() {
+    if (_stories.isEmpty) return;
+
+    Navigator.push(
+  context,
+  MaterialPageRoute(
+    builder: (context) => ViewStoryScreen(
+      stories: _stories,
+      creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
+      creatorId: widget.creatorId, // ✅ CETTE LIGNE A ÉTÉ AJOUTÉE
+      creatorAvatar: _creator?['avatar_url'],
+    ),
+  ),
+);
+  }
+
+  void _openPostDetail(int index) {
     if (!_isSubscribed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Abonnez-vous pour voir ce contenu en détail'), backgroundColor: Color(0xFF8B5CF6)),
@@ -214,7 +255,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
       return;
     }
     
-    // ✅ On récupère le vrai nom du créateur depuis les données déjà chargées
     final creatorName = _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur';
 
     Navigator.push(
@@ -224,7 +264,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
           posts: _posts,
           initialIndex: index,
           creatorId: widget.creatorId,
-          creatorName: creatorName, // ✅ On l'envoie ici
+          creatorName: creatorName,
         ),
       ),
     ).then((success) {
@@ -253,7 +293,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
               ? const Center(child: Text('Créateur introuvable', style: TextStyle(color: Colors.white)))
               : CustomScrollView(
                   slivers: [
-                                        SliverAppBar(
+                    SliverAppBar(
                       expandedHeight: 120,
                       pinned: true,
                       backgroundColor: Colors.black,
@@ -265,19 +305,17 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         ),
                         onPressed: () => Navigator.pop(context),
                       ),
-                      
-                      // ✅ AJOUT : Menu 3 points en haut à droite du profil
                       actions: [
                         PopupMenuButton<String>(
-                          color: const Color(0xFF1A1A1A), // Fond sombre du menu
+                          color: const Color(0xFF1A1A1A),
                           icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
                           onSelected: (value) {
                             if (value == 'report') {
                               showDialog(
                                 context: context,
                                 builder: (context) => ReportDialog(
-                                  targetId: widget.creatorId, // ✅ L'ID du créateur
-                                  targetType: 'profile',      // ✅ On signale un PROFIL ici
+                                  targetId: widget.creatorId,
+                                  targetType: 'profile',
                                 ),
                               );
                             }
@@ -295,9 +333,8 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(width: 8), // Petit espacement avant le bord droit
+                        const SizedBox(width: 8),
                       ],
-
                       flexibleSpace: FlexibleSpaceBar(
                         background: Container(
                           decoration: const BoxDecoration(
@@ -315,19 +352,42 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
+                                // ✅ MODIFIÉ : Avatar avec anneau coloré et GestureDetector
                                 Stack(
                                   children: [
-                                    CircleAvatar(
-                                      radius: 50,
-                                      backgroundColor: Colors.grey.shade800,
-                                      backgroundImage: _creator?['avatar_url'] != null ? NetworkImage(_creator!['avatar_url'].toString()) : null,
-                                      child: _creator?['avatar_url'] == null ? const Icon(Icons.person, color: Colors.white, size: 50) : null,
+                                    GestureDetector(
+                                      onTap: _hasActiveStories ? _openStoriesViewer : null,
+                                      child: Container(
+                                        padding: _hasActiveStories ? const EdgeInsets.all(3) : EdgeInsets.zero,
+                                        decoration: _hasActiveStories
+                                            ? const BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                gradient: LinearGradient(
+                                                  colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)], // Dégradé Afrifan/Insta
+                                                ),
+                                              )
+                                            : null,
+                                        child: CircleAvatar(
+                                          radius: 50,
+                                          backgroundColor: Colors.grey.shade800,
+                                          backgroundImage: _creator?['avatar_url'] != null 
+                                              ? NetworkImage(_creator!['avatar_url'].toString()) 
+                                              : null,
+                                          child: _creator?['avatar_url'] == null 
+                                              ? const Icon(Icons.person, color: Colors.white, size: 50) 
+                                              : null,
+                                        ),
+                                      ),
                                     ),
                                     Positioned(
                                       bottom: 5, right: 5,
                                       child: Container(
                                         width: 16, height: 16,
-                                        decoration: BoxDecoration(color: Colors.green, shape: BoxShape.circle, border: Border.all(color: Colors.black, width: 2)),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green, 
+                                          shape: BoxShape.circle, 
+                                          border: Border.all(color: Colors.black, width: 2)
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -360,11 +420,10 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               ],
                             ),
                             const SizedBox(height: 16),
-                                                        // ✅ LIGNE 1 : Boutons Suivre et Pourboire
                             Row(
                               children: [
                                 Expanded(
-                                  flex: 2, // Prend 2/3 de l'espace
+                                  flex: 2,
                                   child: ElevatedButton(
                                     onPressed: _toggleFollow,
                                     style: ElevatedButton.styleFrom(
@@ -377,8 +436,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-                                
-                                // ✅ NOUVEAU : Bouton Pourboire (prend 1/3 de l'espace)
                                 Expanded(
                                   flex: 1,
                                   child: OutlinedButton.icon(
@@ -392,7 +449,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                       );
                                     },
                                     icon: const Icon(Icons.local_cafe, size: 18),
-                                    label: const Text('Tip'), // Court pour gagner de la place
+                                    label: const Text('Tip'),
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: brandViolet,
                                       side: BorderSide(color: brandViolet),
@@ -404,8 +461,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               ],
                             ),
                             const SizedBox(height: 12),
-
-                            // ✅ LIGNE 2 : Bouton Message (uniquement pour les abonnés PRO, sur toute la largeur)
                             if (_isProSubscriber)
                               SizedBox(
                                 width: double.infinity,
@@ -434,7 +489,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               ],
                             ),
                             const SizedBox(height: 24),
-
                             if (isVerifiedCreator && hasPrices) ...[
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -474,7 +528,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               ),
                               const SizedBox(height: 24),
                             ],
-
                             Row(
                               children: [
                                 _buildTab('POSTS', 0),
@@ -502,7 +555,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                 final likesCount = post['likes_count'] ?? 0;
                                 final title = post['title'] ?? post['caption'] ?? '';
 
-                                // ✅ Si l'utilisateur n'est pas abonné du tout, on verrouille les vidéos
                                 final bool isLocked = !_isSubscribed;
 
                                 return GestureDetector(
@@ -521,7 +573,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                                     child: Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
                                                   )
                                                 : Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
-                                          
                                           if (isLocked)
                                             Container(
                                               color: Colors.black.withOpacity(0.4),
@@ -540,7 +591,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                                 ),
                                               ),
                                             ),
-
                                           Positioned(
                                             bottom: 0, left: 0, right: 0,
                                             child: Container(
@@ -598,7 +648,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-  // ✅ NOUVEAU : La carte gère maintenant les 4 états (Aucun, Premium, Pro, Downgrade bloqué)
   Widget _buildMembershipCard(
     String badge, 
     String title, 
@@ -610,9 +659,8 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
       required int daysRemaining,
     }
   ) {
-    // Logique pour déterminer l'état du bouton
     bool isCurrentTier = currentTier == (isPro ? 'pro' : 'premium');
-    bool isDowngradeBlocked = currentTier == 'pro' && !isPro; // Il est Pro et clique sur Premium
+    bool isDowngradeBlocked = currentTier == 'pro' && !isPro;
 
     String buttonText = 'Rejoindre';
     bool isButtonEnabled = true;
@@ -630,7 +678,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
       buttonColor = Colors.grey.shade800;
       textColor = Colors.grey.shade400;
     } else if (currentTier != null && !isPro) {
-      // Il est Premium et veut passer à Pro (Upgrade)
       buttonText = 'Passer à Pro ($daysRemaining jours restants sur Premium)';
     }
 
@@ -679,7 +726,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                 ),
               )),
           const Spacer(),
-          
           GestureDetector(
             onTap: isButtonEnabled ? () {
               Navigator.push(
@@ -709,7 +755,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                 style: TextStyle(
                   color: textColor,
                   fontWeight: FontWeight.bold,
-                  fontSize: 11, // Un peu plus petit pour faire tenir le texte des jours restants
+                  fontSize: 11,
                 ),
               ),
             ),

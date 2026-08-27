@@ -6,6 +6,8 @@ import 'user_posts_feed_screen.dart';
 import '../settings/settings_screen.dart';
 import '../validation/personal_info_step.dart'; 
 import 'creator_dashboard_screen.dart';
+import 'create_story_screen.dart';
+import 'view_story_screen.dart'; // ✅ AJOUTÉ : Pour ouvrir les stories du créateur
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -17,10 +19,14 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _profile;
   List<dynamic> _userPosts = [];
+  
+  // ✅ NOUVEAU : Liste des stories de l'utilisateur
+  List<Map<String, dynamic>> _userStories = [];
+
   bool _isLoading = true;
   bool _isUploading = false;
   String? _errorMessage;
-  int _selectedTab = 0;
+  int _selectedTab = 0; // 0 = Statuts, 1 = Posts, 2 = Exclusifs, 3 = À propos
 
   int _totalPosts = 0;
   int _totalLikes = 0;
@@ -66,16 +72,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .timeout(connectionTimeout);
 
       final List<dynamic> posts = postsData ?? [];
-      
       int likes = 0;
       for (var post in posts) {
         likes += (post['likes_count'] ?? 0) as int;
       }
 
+      // ✅ NOUVEAU : Charger les stories de l'utilisateur (la RLS filtre automatiquement celles de >24h)
+      final storiesData = await Supabase.instance.client
+          .from('stories')
+          .select('id, media_url, media_type, text_content, background_color, created_at')
+          .eq('creator_id', userId)
+          .order('created_at', ascending: false)
+          .timeout(connectionTimeout);
+
       setState(() { 
         _userPosts = posts;
         _totalPosts = _userPosts.length;
         _totalLikes = likes;
+        _userStories = List<Map<String, dynamic>>.from(storiesData ?? []); // ✅ Stockage des stories
       });
     } catch (error) {
       debugPrint("🚨 ERREUR CHARGEMENT PROFIL : $error");
@@ -130,7 +144,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      // ✅ CHANGÉ : Indicateur blanc
       return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.white)));
     }
 
@@ -162,7 +175,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.black,
       body: RefreshIndicator(
         onRefresh: _loadProfileData,
-        color: Colors.white, // ✅ CHANGÉ : Blanc
+        color: Colors.white,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
@@ -171,7 +184,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(20, 50, 20, 30),
-                // ✅ CHANGÉ : Dégradé noir/gris très sombre, plus de violet
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     colors: [Colors.black, Color(0xFF111111)],
@@ -186,17 +198,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         Stack(
                           children: [
-                            Container(
-                              width: 90,
-                              height: 90,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2), // ✅ CHANGÉ : Bordure blanche
-                              ),
-                              child: CircleAvatar(
-                                backgroundColor: Colors.grey[900],
-                                backgroundImage: _profile?['avatar_url'] != null ? NetworkImage(_profile!['avatar_url']) : null,
-                                child: _profile?['avatar_url'] == null ? const Icon(Icons.person, size: 50, color: Colors.white) : null,
+                            GestureDetector(
+                              onTap: _updateAvatar,
+                              child: Container(
+                                width: 90,
+                                height: 90,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2),
+                                ),
+                                child: CircleAvatar(
+                                  backgroundColor: Colors.grey[900],
+                                  backgroundImage: _profile?['avatar_url'] != null ? NetworkImage(_profile!['avatar_url']) : null,
+                                  child: _profile?['avatar_url'] == null ? const Icon(Icons.person, size: 50, color: Colors.white) : null,
+                                ),
                               ),
                             ),
                             Positioned(
@@ -206,9 +221,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 width: 28,
                                 height: 28,
                                 decoration: BoxDecoration(
-                                  color: Colors.black,
+                                  color: const Color(0xFF8B5CF6),
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2),
+                                  border: Border.all(color: Colors.black, width: 2),
                                 ),
                                 child: const Icon(Icons.add, color: Colors.white, size: 18),
                               ),
@@ -231,11 +246,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                   if (isCreator) ...[
                                     const SizedBox(width: 6),
-                                    const Icon(
-                                      Icons.verified,
-                                      color: Colors.white, // ✅ CHANGÉ : Icône blanche
-                                      size: 22,
-                                    ),
+                                    const Icon(Icons.verified, color: Colors.white, size: 22),
                                   ],
                                 ],
                               ),
@@ -254,7 +265,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.calendar_today, color: Colors.grey, size: 12), // ✅ CHANGÉ : Icône grise
+                                    const Icon(Icons.calendar_today, color: Colors.grey, size: 12),
                                     const SizedBox(width: 4),
                                     Text(
                                       'Membre depuis ${_getMonthYear()}',
@@ -273,8 +284,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    
-                    // ✅ CONSERVÉ : Le bouton principal reste VIOLET comme demandé
                     Row(
                       children: [
                         Expanded(
@@ -289,48 +298,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF8B5CF6), // ✅ VIOLET CONSERVÉ ICI
+                                color: const Color(0xFF8B5CF6),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
-                                    isCreator ? Icons.dashboard : Icons.monetization_on, 
-                                    color: Colors.white, 
-                                    size: 20
-                                  ),
+                                  Icon(isCreator ? Icons.dashboard : Icons.monetization_on, color: Colors.white, size: 20),
                                   const SizedBox(width: 8),
                                   Text(
                                     isCreator ? 'Tableau de bord' : 'Activer le compte',
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () {
-                              // Action modifier profil
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white.withOpacity(0.2)),
-                              ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.edit, color: Colors.white, size: 20),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Modifier le profil',
-                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                                   ),
                                 ],
                               ),
@@ -360,11 +338,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   children: [
-                    _buildTab('Posts', 0),
-                    const SizedBox(width: 24),
-                    _buildTab('Exclusifs', 1),
-                    const SizedBox(width: 24),
-                    _buildTab('À propos', 2),
+                    _buildTab('Statuts', 0),
+                    const SizedBox(width: 16),
+                    _buildTab('Posts', 1),
+                    const SizedBox(width: 16),
+                    _buildTab('Exclusifs', 2),
+                    const SizedBox(width: 16),
+                    _buildTab('À propos', 3),
                   ],
                 ),
               ),
@@ -373,70 +353,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                child: _userPosts.isEmpty
-                    ? _buildEmptyState()
-                    : GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                          childAspectRatio: 0.75,
-                        ),
-                        itemCount: _userPosts.length,
-                        itemBuilder: (context, index) {
-                          final post = _userPosts[index];
-                          final imageUrl = post['media_url'];
-                          final viewsCount = post['likes_count'] ?? 0;
-                          final mediaType = post['media_type'] ?? 'image';
-
-                          return GestureDetector(
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => UserPostsFeedScreen(posts: _userPosts, initialIndex: index)),
+                child: _selectedTab == 0 
+                    ? _buildStoryTabContent() // ✅ LOGIQUE MODIFIÉE ICI
+                    : _userPosts.isEmpty
+                        ? _buildEmptyState()
+                        : GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                              childAspectRatio: 0.75,
                             ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  imageUrl != null && imageUrl.toString().isNotEmpty
-                                      ? Image.network(
-                                          imageUrl.toString(),
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => Container(
-                                            color: Colors.grey[900],
-                                            child: const Icon(Icons.image, color: Colors.grey),
+                            itemCount: _userPosts.length,
+                            itemBuilder: (context, index) {
+                              final post = _userPosts[index];
+                              final imageUrl = post['media_url'];
+                              final viewsCount = post['likes_count'] ?? 0;
+                              final mediaType = post['media_type'] ?? 'image';
+
+                              return GestureDetector(
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => UserPostsFeedScreen(posts: _userPosts, initialIndex: index)),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      imageUrl != null && imageUrl.toString().isNotEmpty
+                                          ? Image.network(
+                                              imageUrl.toString(),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) => Container(
+                                                color: Colors.grey[900],
+                                                child: const Icon(Icons.image, color: Colors.grey),
+                                              ),
+                                            )
+                                          : Container(color: Colors.grey[900]),
+                                      Container(color: Colors.black.withOpacity(0.2)),
+                                      if (mediaType == 'video')
+                                        const Positioned(top: 6, right: 6, child: Icon(Icons.play_circle, color: Colors.white, size: 20)),
+                                      Positioned(
+                                        bottom: 0, left: 0, right: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: const BoxDecoration(
+                                            gradient: LinearGradient(
+                                              colors: [Colors.black87, Colors.transparent],
+                                              begin: Alignment.bottomCenter,
+                                              end: Alignment.topCenter,
+                                            ),
                                           ),
-                                        )
-                                      : Container(color: Colors.grey[900]),
-                                  Container(color: Colors.black.withOpacity(0.2)),
-                                  if (mediaType == 'video')
-                                    const Positioned(top: 6, right: 6, child: Icon(Icons.play_circle, color: Colors.white, size: 20)),
-                                  Positioned(
-                                    bottom: 0, left: 0, right: 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: const BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [Colors.black87, Colors.transparent],
-                                          begin: Alignment.bottomCenter,
-                                          end: Alignment.topCenter,
+                                          child: Text(
+                                            '${_formatCount(viewsCount)}',
+                                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                          ),
                                         ),
                                       ),
-                                      child: Text(
-                                        '${_formatCount(viewsCount)}',
-                                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
+                                    ],
                                   ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                                ),
+                              );
+                            },
+                          ),
               ),
               const SizedBox(height: 20),
             ],
@@ -444,6 +426,212 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  // ✅ NOUVEAU : Interface intelligente pour l'onglet Statuts
+  Widget _buildStoryTabContent() {
+    // CAS 1 : L'utilisateur n'a PAS de story active
+    if (_userStories.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 64),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Partagez un moment éphémère',
+              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Votre statut disparaîtra automatiquement après 24h.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+            const SizedBox(height: 32),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context, 
+                  MaterialPageRoute(builder: (context) => const CreateStoryScreen())
+                ).then((_) => _loadProfileData()); // Rafraîchir après création
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [BoxShadow(color: const Color(0xFF8B5CF6).withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add, color: Colors.white, size: 22),
+                    SizedBox(width: 8),
+                    Text(
+                      'Créer un statut',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // CAS 2 : L'utilisateur a DES stories actives (Affichage style Instagram)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.0),
+          child: Text(
+            'Vos statuts récents',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 110,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: _userStories.length + 1, // +1 pour le bouton "Ajouter"
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return _buildAddStoryButton();
+              }
+              final story = _userStories[index - 1];
+              return _buildUserStoryItem(story);
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+          child: Text(
+            'Cliquez sur un statut pour voir qui l\'a regardé.',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ Bouton pour ajouter une nouvelle story
+  Widget _buildAddStoryButton() {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const CreateStoryScreen()),
+        ).then((_) => _loadProfileData()); // Rafraîchir la liste après ajout
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(right: 12.0),
+        child: Column(
+          children: [
+            Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.grey.shade700, width: 2, style: BorderStyle.solid),
+              ),
+              child: const Center(
+                child: Icon(Icons.add, color: Colors.white, size: 30),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text('Ajouter', style: TextStyle(color: Colors.white, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ Affichage d'une story existante de l'utilisateur
+  Widget _buildUserStoryItem(Map<String, dynamic> story) {
+    final mediaType = story['media_type'] ?? 'image';
+    final mediaUrl = story['media_url'];
+    final bgColor = story['background_color'];
+
+    return GestureDetector(
+      onTap: () {
+        // Ouvre le lecteur de story en mode créateur
+      // Ouvre le lecteur de story en mode créateur
+Navigator.push(
+  context,
+  MaterialPageRoute(
+    builder: (context) => ViewStoryScreen(
+      stories: _userStories,
+      creatorName: _profile?['full_name'] ?? 'Moi',
+      creatorId: _profile?['id'] ?? '', // ✅ CETTE LIGNE A ÉTÉ AJOUTÉE
+      creatorAvatar: _profile?['avatar_url'],
+      initialIndex: _userStories.indexOf(story),
+    ),
+  ),
+).then((_) => _loadProfileData()); // Rafraîchir au retour (au cas où la story a expiré)
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(right: 12.0),
+        child: Column(
+          children: [
+            Container(
+              width: 70,
+              height: 70,
+              padding: const EdgeInsets.all(2), // Pour la bordure dégradée
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)], // Dégradé Afrifan/Insta
+                ),
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.black, width: 2),
+                  color: Colors.grey.shade900,
+                ),
+                child: ClipOval(
+                  child: _getStoryPreview(mediaType, mediaUrl, bgColor),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text('Votre story', style: TextStyle(color: Colors.white, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ Helper pour l'aperçu de la story dans le cercle
+  Widget _getStoryPreview(String mediaType, String? mediaUrl, String? bgColor) {
+    if (mediaType == 'text' && bgColor != null) {
+      return Container(
+        color: Color(int.parse(bgColor.replaceAll('#', '0xFF'))),
+        child: const Center(child: Icon(Icons.text_fields, color: Colors.white, size: 30)),
+      );
+    } else if (mediaUrl != null) {
+      return Image.network(
+        mediaUrl,
+        fit: BoxFit.cover,
+        width: 70,
+        height: 70,
+        errorBuilder: (_, __, ___) => const Icon(Icons.image, color: Colors.grey, size: 30),
+      );
+    }
+    return const Icon(Icons.image, color: Colors.grey, size: 30);
   }
 
   Widget _buildStatCard(String value, String label, IconData icon) {
@@ -457,11 +645,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         child: Column(
           children: [
-            Icon(icon, color: Colors.white, size: 24), // ✅ CHANGÉ : Icône blanche
+            Icon(icon, color: Colors.white, size: 24),
             const SizedBox(height: 8),
             Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
             const SizedBox(height: 4),
-            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)), // ✅ CHANGÉ : Texte gris
+            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
           ],
         ),
       ),
@@ -479,7 +667,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05), // ✅ CHANGÉ : Fond blanc très transparent
+                color: Colors.white.withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
             ),
@@ -488,17 +676,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1), // ✅ CHANGÉ : Fond blanc transparent
+                    color: Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Icon(Icons.description, color: Colors.white, size: 48), // ✅ CHANGÉ : Icône blanche
+                  child: const Icon(Icons.description, color: Colors.white, size: 48),
                 ),
                 const SizedBox(height: 8),
                 Container(
                   width: 32,
                   height: 32,
                   decoration: const BoxDecoration(
-                    color: Colors.white, // ✅ CHANGÉ : Rond blanc
+                    color: Colors.white,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.add, color: Colors.black, size: 20),
@@ -518,30 +706,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.grey, fontSize: 13),
         ),
-        const SizedBox(height: 24),
-        GestureDetector(
-          onTap: () {
-            // Action créer un post
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white), // ✅ CHANGÉ : Bordure blanche
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.add, color: Colors.white, size: 20), // ✅ CHANGÉ : Icône blanche
-                SizedBox(width: 8),
-                Text(
-                  'Créer un post',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), // ✅ CHANGÉ : Texte blanc
-                ),
-              ],
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -553,15 +717,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         children: [
           Icon(
-            index == 0 ? Icons.grid_view : index == 1 ? Icons.lock_outline : Icons.person_outline,
-            color: isSelected ? Colors.white : Colors.grey, // ✅ CHANGÉ : Blanc si sélectionné, gris sinon
+            index == 0 ? Icons.flash_on : index == 1 ? Icons.grid_view : index == 2 ? Icons.lock_outline : Icons.person_outline,
+            color: isSelected ? Colors.white : Colors.grey,
             size: 22,
           ),
           const SizedBox(height: 6),
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey, // ✅ CHANGÉ : Blanc si sélectionné
+              color: isSelected ? Colors.white : Colors.grey,
               fontSize: 12,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
@@ -571,7 +735,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               margin: const EdgeInsets.only(top: 6),
               height: 2,
               width: 20,
-              color: Colors.white, // ✅ CHANGÉ : Ligne blanche
+              color: Colors.white,
             ),
         ],
       ),

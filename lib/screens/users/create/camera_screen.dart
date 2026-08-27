@@ -6,6 +6,7 @@ import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
 import 'post_selection_screen.dart';
+import 'ai_creation_screen.dart'; // ✅ IMPORT DE L'ÉCRAN IA
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -61,6 +62,15 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     }
   }
 
+  // ✅ OUVRIR L'ÉCRAN IA (Fonctionne sur Mobile ET Web)
+  void _openAIScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AICreationScreen()),
+    );
+  }
+
+  // ✅ SIMULER LA CAPTURE SUR WEB (Ouvre la galerie du PC)
   Future<void> _simulateCaptureWeb(String type) async {
     try {
       final XFile? file = type == 'photo' 
@@ -74,7 +84,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             builder: (context) => PostSelectionScreen(
               mediaPath: file.path,
               mediaType: type,
-              xFile: file, // ✅ xFile passé ici
+              xFile: file,
             ),
           ),
         );
@@ -135,7 +145,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             builder: (context) => PostSelectionScreen(
               mediaPath: photo.path,
               mediaType: 'photo',
-              xFile: photo, // ✅ CORRECTION : xFile ajouté ici
+              xFile: photo,
             ),
           ),
         );
@@ -173,7 +183,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             builder: (context) => PostSelectionScreen(
               mediaPath: video.path,
               mediaType: 'video',
-              xFile: video, // ✅ CORRECTION : xFile ajouté ici
+              xFile: video,
             ),
           ),
         );
@@ -205,55 +215,115 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    // ==========================================================
+    // 🌐 MODE WEB (Pour tester l'interface et l'IA sur Chrome)
+    // ==========================================================
     if (kIsWeb) {
       return Scaffold(
         backgroundColor: Colors.black,
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32.0),
+        body: Stack(
+          children: [
+            // Fond simulé (dégradé stylé)
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+colors: const [
+  Color(0xFF8B5CF6), // Violet Afrifan
+  Color(0xFF4A148C), // Équivalent de Colors.purple.shade900
+  Colors.black,
+],                  ),
+                ),
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.camera_enhance, size: 100, color: Colors.white24),
+                      SizedBox(height: 16),
+                      Text('Mode Test Web', style: TextStyle(color: Colors.white38, fontSize: 24, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Overlay sombre
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [Colors.black.withOpacity(0.4), Colors.transparent, Colors.transparent, Colors.black.withOpacity(0.6)],
+                  ),
+                ),
+              ),
+            ),
+            // Barre d'outils (droite)
+            Positioned(
+              right: 16, top: MediaQuery.of(context).padding.top + 20, bottom: 120,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.laptop_mac, color: Color(0xFF8B5CF6), size: 80),
-                  const SizedBox(height: 24),
-                  const Text(
-                    '🌐 Mode Test Web',
-                    style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'La caméra native ne fonctionne pas sur Chrome.\nUtilise ces boutons pour simuler une capture.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  const SizedBox(height: 40),
-                  ElevatedButton.icon(
-                    onPressed: () => _simulateCaptureWeb('photo'),
-                    icon: const Icon(Icons.photo_camera, color: Colors.black),
-                    label: const Text('📸 Simuler une Photo', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white, minimumSize: const Size(double.infinity, 56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                  ),
+                  _buildToolButton(icon: Icons.flash_off, onTap: () {}),
                   const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () => _simulateCaptureWeb('video'),
-                    icon: const Icon(Icons.videocam, color: Colors.black),
-                    label: const Text('🎥 Simuler une Vidéo', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6), minimumSize: const Size(double.infinity, 56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                  ),
-                  const SizedBox(height: 40),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Retour', style: TextStyle(color: Colors.white54)),
-                  )
+                  _buildToolButton(icon: Icons.music_note_outlined, onTap: () {}),
+                  const SizedBox(height: 16),
+                  _buildToolButton(icon: Icons.grid_off, onTap: () {}),
                 ],
               ),
             ),
-          ),
+            // Contrôles en bas
+            Positioned(
+              left: 0, right: 0, bottom: 30,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // ✅ BOUTON IA (Fonctionnel sur Web !)
+                  GestureDetector(
+                    onTap: _openAIScreen,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(color: Colors.grey.shade900.withOpacity(0.8), borderRadius: BorderRadius.circular(12)),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 28),
+                          SizedBox(height: 2),
+                          Text('IA', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Bouton capture (simulé)
+                  GestureDetector(
+                    onTap: () => _simulateCaptureWeb('photo'),
+                    child: Container(
+                      width: 80, height: 80,
+                      decoration: BoxDecoration(color: Colors.transparent, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 4)),
+                      child: Container(margin: const EdgeInsets.all(8.0), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                    ),
+                  ),
+                  // Retourner caméra (désactivé)
+                  GestureDetector(
+                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Disponible sur mobile uniquement'), backgroundColor: Color(0xFF8B5CF6))),
+                    child: Container(
+                      width: 50, height: 50,
+                      decoration: const BoxDecoration(color: Color(0xFF8B5CF6), shape: BoxShape.circle),
+                      child: const Icon(Icons.flip_camera_ios, color: Colors.white, size: 28),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       );
     }
 
+    // ==========================================================
+    // 📱 MODE MOBILE (Caméra Native Réelle - PRIORITAIRE)
+    // ==========================================================
     if (!_isCameraInitialized) {
       return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6))));
     }
@@ -289,10 +359,23 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // ✅ BOUTON IA (Gauche)
                 GestureDetector(
-                  onTap: () => _simulateCaptureWeb('photo'),
-                  child: Container(width: 50, height: 50, decoration: BoxDecoration(color: Colors.grey.shade800, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.photo, color: Colors.white54)),
+                  onTap: _openAIScreen,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(color: Colors.grey.shade900.withOpacity(0.8), borderRadius: BorderRadius.circular(12)),
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 28),
+                        SizedBox(height: 2),
+                        Text('IA', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
                 ),
+                // BOUTON CAPTURE (Centre)
                 GestureDetector(
                   onTapDown: _isRecordingVideo ? null : (_) => _startRecording(),
                   onTapUp: _isRecordingVideo ? (_) => _stopRecording() : null,
@@ -308,6 +391,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                     ),
                   ),
                 ),
+                // Retourner caméra (Droite)
                 GestureDetector(
                   onTap: _toggleCamera,
                   child: Container(width: 50, height: 50, decoration: const BoxDecoration(color: Color(0xFF8B5CF6), shape: BoxShape.circle), child: const Icon(Icons.flip_camera_ios, color: Colors.white, size: 28)),

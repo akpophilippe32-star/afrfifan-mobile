@@ -17,6 +17,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  // ─── CONSTANTES DE COULEUR ────────────────────────────────
+  static const Color _primaryColor = Color(0xFF8B5CF6);
+  static const Color _backgroundColor = Color(0xFF0A0A0A);
+  static const Color _cardColor = Color(0xFF1A1A1A);
+  static const Color _textColor = Colors.white;
+  static const Color _textSecondaryColor = Color(0xFF9CA3AF);
+
   @override
   void dispose() {
     _passwordController.dispose();
@@ -31,7 +38,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     setState(() => _isSaving = true);
 
     try {
-      // Supabase gère la mise à jour du mot de passe de l'utilisateur connecté directement comme ceci :
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(
           password: _passwordController.text.trim(),
@@ -40,14 +46,20 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Mot de passe mis à jour avec succès ! 🔐")),
+          const SnackBar(
+            content: Text("Mot de passe mis à jour avec succès ! 🔐"),
+            backgroundColor: Colors.green,
+          ),
         );
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erreur lors de la mise à jour : $e")),
+          SnackBar(
+            content: Text("Erreur lors de la mise à jour : $e"),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -60,17 +72,21 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: _backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: _backgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          icon: const Icon(Icons.arrow_back, color: _textColor),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'Sécurité',
-          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(
+            color: _textColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
         centerTitle: true,
       ),
@@ -83,15 +99,20 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             children: [
               const Text(
                 'Choisissez un mot de passe fort pour protéger l\'accès à votre compte.',
-                style: TextStyle(color: Colors.grey, fontSize: 14),
+                style: TextStyle(
+                  color: _textSecondaryColor,
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(height: 24),
 
-              // --- CHAMP : NOUVEAU MOT DE PASSE ---
+              // ─── NOUVEAU MOT DE PASSE ─────────────────────
               _buildInputLabel("Nouveau mot de passe"),
               TextFormField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
+                style: const TextStyle(color: _textColor),
+                cursorColor: _primaryColor,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return "Veuillez entrer un mot de passe";
@@ -105,18 +126,23 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   hintText: "Minimum 6 caractères",
                   prefixIcon: Icons.lock_outline,
                   suffixIcon: IconButton(
-                    icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.black38),
+                    icon: Icon(
+                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      color: _textSecondaryColor,
+                    ),
                     onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
 
-              // --- CHAMP : CONFIRMER LE MOT DE PASSE ---
+              // ─── CONFIRMER LE MOT DE PASSE ─────────────────
               _buildInputLabel("Confirmer le nouveau mot de passe"),
               TextFormField(
                 controller: _confirmPasswordController,
                 obscureText: _obscureConfirmPassword,
+                style: const TextStyle(color: _textColor),
+                cursorColor: _primaryColor,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return "Veuillez confirmer votre mot de passe";
@@ -128,24 +154,27 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 },
                 decoration: _buildInputDecoration(
                   hintText: "Répétez le mot de passe",
-                  prefixIcon: Icons.lock_outline, // Un joli verrou classique et épuré
+                  prefixIcon: Icons.lock_outline,
                   suffixIcon: IconButton(
-                    icon: Icon(_obscureConfirmPassword ? Icons.visibility_off : Icons.visibility, color: Colors.black38),
+                    icon: Icon(
+                      _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                      color: _textSecondaryColor,
+                    ),
                     onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
                   ),
                 ),
               ),
               const SizedBox(height: 32),
 
-              // 🟪 --- BOUTON DE SAUVEGARDE ---
+              // ─── BOUTON DE SAUVEGARDE ──────────────────────
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _isSaving ? null : _updatePassword,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6366F1), // Violet
+                    backgroundColor: _primaryColor,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey[300],
+                    disabledBackgroundColor: Colors.grey[800],
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -156,11 +185,17 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
                         )
                       : const Text(
                           'Mettre à jour le mot de passe',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                 ),
               ),
@@ -171,33 +206,71 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     );
   }
 
+  // ─── WIDGETS ────────────────────────────────────────────────
+
   Widget _buildInputLabel(String label) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Text(
         label,
-        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 14),
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          color: _textColor,
+          fontSize: 14,
+        ),
       ),
     );
   }
 
   InputDecoration _buildInputDecoration({
-    required String hintText, 
+    required String hintText,
     required IconData prefixIcon,
     Widget? suffixIcon,
   }) {
     return InputDecoration(
       hintText: hintText,
-      prefixIcon: Icon(prefixIcon, color: Colors.black38, size: 20),
+      hintStyle: TextStyle(
+        color: _textSecondaryColor.withOpacity(0.6),
+      ),
+      prefixIcon: Icon(
+        prefixIcon,
+        color: _textSecondaryColor,
+        size: 20,
+      ),
       suffixIcon: suffixIcon,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      filled: true,
+      fillColor: _cardColor,
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[200]!),
+        borderSide: BorderSide(
+          color: Colors.grey[800]!,
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF6366F1), width: 1.5),
+        borderSide: const BorderSide(
+          color: _primaryColor,
+          width: 1.5,
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: Colors.redAccent,
+          width: 1.5,
+        ),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: Colors.redAccent,
+          width: 1.5,
+        ),
+      ),
+      errorStyle: const TextStyle(
+        color: Colors.redAccent,
+        fontSize: 12,
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../theme/app_colors.dart'; // ✅ Pour utiliser ta couleur primaire
 
 class PersonalInfoScreen extends StatefulWidget {
   const PersonalInfoScreen({super.key});
@@ -11,7 +12,7 @@ class PersonalInfoScreen extends StatefulWidget {
 class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
-  final _emailController = TextEditingController(); // L'email de Supabase Auth (lecture seule)
+  final _emailController = TextEditingController(); 
   
   bool _isLoading = true;
   bool _isSaving = false;
@@ -29,7 +30,6 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
     super.dispose();
   }
 
-  // 🔄 Récupérer les infos depuis Supabase Auth et la table profiles
   Future<void> _fetchUserData() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
@@ -47,7 +47,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         _usernameController.text = data['username'].toString();
       }
     } catch (e) {
-      print("🚨 Erreur lors de la récupération des infos : $e");
+      debugPrint("🚨 Erreur lors de la récupération des infos : $e");
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -55,7 +55,6 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
     }
   }
 
-  // 💾 Enregistrer les modifications du pseudo
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -69,14 +68,20 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Informations mises à jour avec succès ! 💜")),
+          const SnackBar(
+            content: Text("Informations mises à jour avec succès !"),
+            backgroundColor: Colors.green,
+          ),
         );
-        Navigator.pop(context, true); // Retourne 'true' pour notifier qu'un changement a eu lieu
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erreur lors de l'enregistrement : $e")),
+          SnackBar(
+            content: Text("Erreur lors de l'enregistrement : $e"),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -89,22 +94,22 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.black, // ✅ FOND NOIR
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.black,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'Informations personnelles',
-          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)))
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Form(
@@ -122,6 +127,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                     _buildInputLabel("Nom d'utilisateur"),
                     TextFormField(
                       controller: _usernameController,
+                      style: const TextStyle(color: Colors.white), // ✅ TEXTE BLANC
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return "Le nom d'utilisateur ne peut pas être vide";
@@ -135,17 +141,17 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // --- CHAMP EMAIL (Lecture seule pour la sécurité) ---
+                    // --- CHAMP EMAIL (Lecture seule) ---
                     _buildInputLabel("Adresse Email (Non modifiable)"),
                     TextFormField(
                       controller: _emailController,
                       readOnly: true,
-                      style: const TextStyle(color: Colors.black54),
+                      style: const TextStyle(color: Colors.grey), // ✅ TEXTE GRIS POUR LECTURE SEULE
                       decoration: _buildInputDecoration(
                         hintText: "email@exemple.com",
                         prefixIcon: Icons.email_outlined,
                       ).copyWith(
-                        fillColor: Colors.grey[100],
+                        fillColor: const Color(0xFF151515), // ✅ LÉGÈREMENT PLUS FONCÉ POUR INDiquer "désactivé"
                         filled: true,
                       ),
                     ),
@@ -157,9 +163,10 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                       child: ElevatedButton(
                         onPressed: _isSaving ? null : _saveProfile,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6366F1), // Ton violet fétiche
+                          backgroundColor: AppColors.primary, // ✅ COULEUR PRIMAIRE DE L'APP
                           foregroundColor: Colors.white,
-                          disabledBackgroundColor: Colors.grey[300],
+                          disabledBackgroundColor: Colors.grey.shade800,
+                          disabledForegroundColor: Colors.grey.shade500,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -190,7 +197,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Text(
         label,
-        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 14),
+        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14), // ✅ LABEL BLANC
       ),
     );
   }
@@ -198,15 +205,18 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   InputDecoration _buildInputDecoration({required String hintText, required IconData prefixIcon}) {
     return InputDecoration(
       hintText: hintText,
-      prefixIcon: Icon(prefixIcon, color: Colors.black38, size: 20),
+      hintStyle: const TextStyle(color: Colors.grey), // ✅ HINT GRIS
+      prefixIcon: Icon(prefixIcon, color: Colors.grey, size: 20), // ✅ ICÔNE GRISE
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      fillColor: const Color(0xFF1A1A1A), // ✅ FOND DU CHAMP GRIS FONCÉ
+      filled: true,
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[200]!),
+        borderSide: BorderSide(color: Colors.grey.shade800), // ✅ BORDURE DISCRÈTE
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF6366F1), width: 1.5),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5), // ✅ BORDURE VIOLETTE AU FOCUS
       ),
     );
   }

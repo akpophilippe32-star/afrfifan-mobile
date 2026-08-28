@@ -10,13 +10,15 @@ import '../create/models/draft_post.dart';
 class PostSelectionScreen extends StatefulWidget {
   final String mediaPath;
   final String mediaType;
-  final XFile? xFile; // ✅ Optionnel (null pour les images IA)
+  final XFile? xFile; 
+  final Map<String, String>? selectedSound; // ✅ AJOUTÉ : Pour recevoir le son choisi
 
   const PostSelectionScreen({
     super.key,
     required this.mediaPath,
     required this.mediaType,
     this.xFile,
+    this.selectedSound, // ✅ AJOUTÉ
   });
 
   @override
@@ -50,10 +52,8 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
           });
       } else {
         if (widget.xFile != null) {
-          // ✅ C'est un fichier local (caméra/galerie)
           _imageBytes = await widget.xFile!.readAsBytes();
         }
-        // ✅ Si xFile est null, c'est une URL (IA), on l'affichera avec Image.network plus bas
         if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
@@ -68,7 +68,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     super.dispose();
   }
 
-  // ✅ VRAIE PUBLICATION STORY
   Future<void> _publishToStory() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -76,7 +75,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       return;
     }
 
-    // ✅ Gestion des images IA (pas de XFile local pour l'instant en story)
     if (widget.xFile == null) {
       _showError('Publication en Story d\'image IA bientôt disponible. Utilisez le Feed !');
       return;
@@ -85,7 +83,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     setState(() => _isPublishing = true);
     try {
       final storyId = await contentService.publishStory(
-        mediaFile: widget.xFile!, // ✅ On est maintenant sûr qu'il n'est pas null
+        mediaFile: widget.xFile!,
         userId: user.id,
       );
 
@@ -104,7 +102,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     }
   }
 
-  // ✅ VRAIE PUBLICATION FEED (Fonctionne parfaitement avec les URL IA !)
   Future<void> _publishToFeed({String? title, String? caption}) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -116,8 +113,14 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     try {
       final draft = DraftPost();
       draft.postType = widget.mediaType == 'video' ? 'video' : 'image';
-      draft.mediaPaths = [widget.mediaPath]; // ✅ L'URL de l'IA est parfaitement gérée ici
+      draft.mediaPaths = [widget.mediaPath];
       draft.caption = caption ?? '';
+      
+      // ✅ AJOUT : On sauvegarde l'URL du son dans le brouillon du post
+      if (widget.selectedSound != null) {
+        draft.musicUrl = widget.selectedSound!['url'];
+      }
+
       if (title != null && title.isNotEmpty) {
         draft.caption = '$title\n\n${draft.caption}';
       }
@@ -236,6 +239,34 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // ✅ AFFICHER LE SON CHOISI (NOUVEAU)
+                          if (widget.selectedSound != null) ...[
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF8B5CF6).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.music_note, color: Color(0xFF8B5CF6)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      widget.selectedSound!['title']!,
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  Text(
+                                    widget.selectedSound!['artist']!,
+                                    style: TextStyle(color: Colors.grey.shade400),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
                           const Text('Où voulez-vous publier ?', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 20),
                           _buildSelectionCard(icon: Icons.flash_on, title: 'Ma Story', subtitle: 'Disparaît après 24h', color: const Color(0xFF8B5CF6), onTap: _publishToStory),
@@ -257,10 +288,8 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
         return AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: VideoPlayer(_videoController!));
       }
     } else if (widget.xFile != null && _imageBytes != null) {
-      // ✅ Fichier local (caméra/galerie)
       return Image.memory(_imageBytes!, fit: BoxFit.cover, width: double.infinity, height: double.infinity);
     } else {
-      // ✅ C'est une URL (ex: image générée par IA)
       return Image.network(
         widget.mediaPath,
         fit: BoxFit.cover,

@@ -4,10 +4,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'user_posts_feed_screen.dart';
 import '../settings/settings_screen.dart';
-import '../validation/personal_info_step.dart'; 
+import '../settings/personal_info_screen.dart'; 
 import 'creator_dashboard_screen.dart';
 import 'create_story_screen.dart';
-import 'view_story_screen.dart'; // ✅ AJOUTÉ : Pour ouvrir les stories du créateur
+import 'view_story_screen.dart';
+import '../validation/personal_info_step.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,20 +17,21 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveClientMixin {
   Map<String, dynamic>? _profile;
   List<dynamic> _userPosts = [];
-  
-  // ✅ NOUVEAU : Liste des stories de l'utilisateur
   List<Map<String, dynamic>> _userStories = [];
 
   bool _isLoading = true;
   bool _isUploading = false;
   String? _errorMessage;
-  int _selectedTab = 0; // 0 = Statuts, 1 = Posts, 2 = Exclusifs, 3 = À propos
-
+  int _selectedTab = 0;
   int _totalPosts = 0;
   int _totalLikes = 0;
+  bool _hasLoadedOnce = false;
+  
+  // ✅ NOUVEAU : Pour suivre le statut de la demande créateur
+  String _applicationStatus = 'none'; // 'none', 'pending', 'rejected', 'accepted'
 
   @override
   void initState() {
@@ -37,7 +39,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadProfileData();
   }
 
+  @override
+  bool get wantKeepAlive => true;
+
   Future<void> _loadProfileData() async {
+    if (_hasLoadedOnce) return;
+
     setState(() { _isLoading = true; _errorMessage = null; });
 
     final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -64,9 +71,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'is_verified': false,
       };
 
+      // ✅ VÉRIFICATION INTELLIGENTE DU STATUT DE LA DEMANDE CRÉATEUR
+      if (_profile?['role'] == 'creator' && _profile?['is_verified'] == true) {
+        _applicationStatus = 'accepted';
+      } else {
+        final appData = await Supabase.instance.client
+            .from('creator_applications')
+            .select('status')
+            .eq('user_id', userId)
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+
+        if (appData != null) {
+          _applicationStatus = appData['status']; // Sera 'pending' ou 'rejected'
+        } else {
+          _applicationStatus = 'none'; // Aucune demande précédente
+        }
+      }
+
       final postsData = await Supabase.instance.client
           .from('posts')
-          .select('id, media_url, title, created_at, likes_count, media_type')
+          .select('id, media_url, title, created_at, likes_count, media_type, views_count')
           .eq('user_id', userId)
           .order('created_at', ascending: false)
           .timeout(connectionTimeout);
@@ -77,7 +103,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         likes += (post['likes_count'] ?? 0) as int;
       }
 
-      // ✅ NOUVEAU : Charger les stories de l'utilisateur (la RLS filtre automatiquement celles de >24h)
       final storiesData = await Supabase.instance.client
           .from('stories')
           .select('id, media_url, media_type, text_content, background_color, created_at')
@@ -85,18 +110,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .order('created_at', ascending: false)
           .timeout(connectionTimeout);
 
-      setState(() { 
-        _userPosts = posts;
-        _totalPosts = _userPosts.length;
-        _totalLikes = likes;
-        _userStories = List<Map<String, dynamic>>.from(storiesData ?? []); // ✅ Stockage des stories
-      });
+      if (mounted) {
+        setState(() { 
+          _userPosts = posts;
+          _totalPosts = _userPosts.length;
+          _totalLikes = likes;
+          _userStories = List<Map<String, dynamic>>.from(storiesData ?? []);
+          _hasLoadedOnce = true;
+        });
+      }
     } catch (error) {
       debugPrint("🚨 ERREUR CHARGEMENT PROFIL : $error");
-      setState(() { _errorMessage = "Erreur de chargement."; });
+      if (mounted) setState(() { _errorMessage = "Erreur de chargement."; });
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showAvatarOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(2))),
+            ListTile(
+              leading: const Icon(Icons.zoom_in, color: Colors.white),
+              title: const Text('Voir en grand', style: TextStyle(color: Colors.white)),
+              onTap: () { Navigator.pop(context); _viewAvatarFullScreen(); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Color(0xFF8B5CF6)),
+              title: const Text('Modifier la photo', style: TextStyle(color: Colors.white)),
+              onTap: () { Navigator.pop(context); _updateAvatar(); },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _viewAvatarFullScreen() {
+    final avatarUrl = _profile?['avatar_url'];
+    if (avatarUrl == null || avatarUrl.isEmpty) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(backgroundColor: Colors.black, elevation: 0, leading: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(context))),
+          body: Center(
+            child: InteractiveViewer(
+              panEnabled: true,
+              boundaryMargin: const EdgeInsets.all(20),
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(avatarUrl, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _updateAvatar() async {
@@ -111,21 +191,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       final file = File(image.path);
-      final String fileName = '$userId/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final String fileName = '$userId/avatar.jpg'; 
+
+      final oldAvatarUrl = _profile?['avatar_url'];
+      if (oldAvatarUrl != null && oldAvatarUrl.contains(fileName)) {
+        try { await Supabase.instance.client.storage.from('avatars').remove([fileName]); } catch (_) {}
+      }
 
       await Supabase.instance.client.storage.from('avatars').upload(fileName, file, fileOptions: const FileOptions(upsert: true));
       final String publicUrl = Supabase.instance.client.storage.from('avatars').getPublicUrl(fileName);
 
       await Supabase.instance.client.from('profiles').update({'avatar_url': publicUrl}).eq('id', userId);
-      setState(() { _profile?['avatar_url'] = publicUrl; });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Photo mise à jour !"), backgroundColor: Colors.white));
+        setState(() { _profile?['avatar_url'] = publicUrl; });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Photo mise à jour !"), backgroundColor: Colors.green));
       }
     } catch (e) {
       debugPrint("🚨 ERREUR UPLOAD AVATAR : $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Échec de la mise à jour."), backgroundColor: Colors.red));
+      }
     } finally {
-      setState(() => _isUploading = false);
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
@@ -135,16 +223,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return count.toString();
   }
 
-  String _getMonthYear() {
-    final now = DateTime.now();
-    const months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-    return '${months[now.month - 1]} ${now.year}';
-  }
-
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     if (_isLoading) {
-      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.white)));
+      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6))));
     }
 
     if (_errorMessage != null) {
@@ -159,8 +243,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Text(_errorMessage!, style: const TextStyle(color: Colors.white)),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: _loadProfileData, 
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+                onPressed: () { _hasLoadedOnce = false; _loadProfileData(); }, 
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6), foregroundColor: Colors.white),
                 child: const Text('Réessayer'),
               ),
             ],
@@ -174,144 +258,131 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: RefreshIndicator(
-        onRefresh: _loadProfileData,
-        color: Colors.white,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: double.infinity,
+        onRefresh: () async { _hasLoadedOnce = false; await _loadProfileData(); },
+        color: const Color(0xFF8B5CF6),
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 50, 20, 30),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.black, Color(0xFF111111)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Stack(
-                          children: [
-                            GestureDetector(
-                              onTap: _updateAvatar,
-                              child: Container(
-                                width: 90,
-                                height: 90,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2),
-                                ),
-                                child: CircleAvatar(
-                                  backgroundColor: Colors.grey[900],
-                                  backgroundImage: _profile?['avatar_url'] != null ? NetworkImage(_profile!['avatar_url']) : null,
-                                  child: _profile?['avatar_url'] == null ? const Icon(Icons.person, size: 50, color: Colors.white) : null,
-                                ),
-                              ),
+                        IconButton(
+                          icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 28),
+                          tooltip: 'Paramètres',
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SettingsScreen(username: _profile?['full_name']),
                             ),
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: Container(
-                                width: 28,
-                                height: 28,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF8B5CF6),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.black, width: 2),
-                                ),
-                                child: const Icon(Icons.add, color: Colors.white, size: 18),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      _profile?['full_name']?.toUpperCase() ?? 'UTILISATEUR',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: Colors.white),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  if (isCreator) ...[
-                                    const SizedBox(width: 6),
-                                    const Icon(Icons.verified, color: Colors.white, size: 22),
-                                  ],
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '@${_profile?['username'] ?? 'username'}',
-                                style: const TextStyle(color: Colors.grey, fontSize: 14),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.calendar_today, color: Colors.grey, size: 12),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Membre depuis ${_getMonthYear()}',
-                                      style: const TextStyle(color: Colors.grey, fontSize: 11),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.settings, color: Colors.white, size: 26),
-                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen())),
-                        ),
                       ],
+                    ),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: _showAvatarOptions,
+                      child: Stack(
+                        children: [
+                          Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)]),
+                              boxShadow: [BoxShadow(color: const Color(0xFF8B5CF6).withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 5))],
+                            ),
+                            padding: const EdgeInsets.all(3),
+                            child: CircleAvatar(
+                              backgroundColor: Colors.black,
+                              backgroundImage: _profile?['avatar_url'] != null ? NetworkImage(_profile!['avatar_url']) : null,
+                              child: _profile?['avatar_url'] == null ? const Icon(Icons.person, size: 60, color: Colors.white) : null,
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 5, right: 5,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF8B5CF6),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.black, width: 3),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 5)],
+                              ),
+                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 20),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(_profile?['full_name']?.toUpperCase() ?? 'UTILISATEUR', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: Colors.white, letterSpacing: 1)),
+                        if (isCreator) ...[const SizedBox(width: 8), const Icon(Icons.verified, color: Color(0xFF8B5CF6), size: 24)],
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text('@${_profile?['username'] ?? 'username'}', style: const TextStyle(color: Colors.grey, fontSize: 15)),
+                    const SizedBox(height: 24),
+                    
+                    // ✅ BOUTON D'ACTION INTELLIGENT
+                    Row(
                       children: [
                         Expanded(
-                          child: GestureDetector(
-                            onTap: () {
-                              if (isCreator) {
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (_applicationStatus == 'accepted') {
                                 Navigator.push(context, MaterialPageRoute(builder: (context) => const CreatorDashboardScreen()));
+                              } else if (_applicationStatus == 'pending') {
+                                // ✅ EMPÊCHE DE RELANCER LA DEMANDE
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Votre demande est en cours de vérification. Veuillez patienter.'),
+                                    backgroundColor: Colors.orange,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
                               } else {
+                                // ✅ 'none' ou 'rejected' : on lance ou relance l'activation
                                 Navigator.push(context, MaterialPageRoute(builder: (context) => const PersonalInfoStep()));
                               }
                             },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF8B5CF6),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(isCreator ? Icons.dashboard : Icons.monetization_on, color: Colors.white, size: 20),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    isCreator ? 'Tableau de bord' : 'Activer le compte',
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                                  ),
-                                ],
-                              ),
+                            icon: Icon(
+                              _applicationStatus == 'accepted' ? Icons.dashboard : 
+                              (_applicationStatus == 'pending' ? Icons.hourglass_top : Icons.monetization_on), 
+                              size: 20,
+                            ),
+                            label: Text(
+                              _applicationStatus == 'accepted' ? 'Tableau de bord' : 
+                              (_applicationStatus == 'pending' ? 'En cours...' : 'Activer le compte'), 
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              // ✅ Le bouton devient gris si c'est en cours
+                              backgroundColor: _applicationStatus == 'pending' ? Colors.grey.shade700 : const Color(0xFF8B5CF6),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PersonalInfoScreen())),
+                            icon: const Icon(Icons.edit, size: 20),
+                            label: const Text('Modifier', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Color(0xFF8B5CF6), width: 2),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                           ),
                         ),
@@ -320,332 +391,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
+            ),
 
-              Padding(
-                padding: const EdgeInsets.all(20),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                 child: Row(
                   children: [
-                    _buildStatCard(_formatCount(_totalLikes), 'Likes', Icons.favorite_border),
+                    _buildStatCard(_formatCount(_totalLikes), 'Likes', Icons.favorite, const Color(0xFFEF4444)),
                     const SizedBox(width: 12),
-                    _buildStatCard(_totalPosts.toString(), 'Posts', Icons.description_outlined),
+                    _buildStatCard(_totalPosts.toString(), 'Posts', Icons.grid_view, const Color(0xFF3B82F6)),
                     const SizedBox(width: 12),
-                    _buildStatCard(_formatCount((_totalLikes * 1.5).toInt()), 'Vues', Icons.visibility_outlined),
+                    _buildStatCard(_formatCount(_userPosts.fold(0, (sum, p) => sum + ((p['views_count'] ?? 0) as int))), 'Vues', Icons.visibility, const Color(0xFF10B981)),
                   ],
                 ),
               ),
+            ),
 
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFF2A2A2A)), bottom: BorderSide(color: Color(0xFF2A2A2A))),
+                ),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildTab('Statuts', 0),
-                    const SizedBox(width: 16),
-                    _buildTab('Posts', 1),
-                    const SizedBox(width: 16),
-                    _buildTab('Exclusifs', 2),
-                    const SizedBox(width: 16),
-                    _buildTab('À propos', 3),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Divider(color: Colors.white10, height: 1),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                child: _selectedTab == 0 
-                    ? _buildStoryTabContent() // ✅ LOGIQUE MODIFIÉE ICI
-                    : _userPosts.isEmpty
-                        ? _buildEmptyState()
-                        : GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                              childAspectRatio: 0.75,
-                            ),
-                            itemCount: _userPosts.length,
-                            itemBuilder: (context, index) {
-                              final post = _userPosts[index];
-                              final imageUrl = post['media_url'];
-                              final viewsCount = post['likes_count'] ?? 0;
-                              final mediaType = post['media_type'] ?? 'image';
-
-                              return GestureDetector(
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => UserPostsFeedScreen(posts: _userPosts, initialIndex: index)),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      imageUrl != null && imageUrl.toString().isNotEmpty
-                                          ? Image.network(
-                                              imageUrl.toString(),
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) => Container(
-                                                color: Colors.grey[900],
-                                                child: const Icon(Icons.image, color: Colors.grey),
-                                              ),
-                                            )
-                                          : Container(color: Colors.grey[900]),
-                                      Container(color: Colors.black.withOpacity(0.2)),
-                                      if (mediaType == 'video')
-                                        const Positioned(top: 6, right: 6, child: Icon(Icons.play_circle, color: Colors.white, size: 20)),
-                                      Positioned(
-                                        bottom: 0, left: 0, right: 0,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(6),
-                                          decoration: const BoxDecoration(
-                                            gradient: LinearGradient(
-                                              colors: [Colors.black87, Colors.transparent],
-                                              begin: Alignment.bottomCenter,
-                                              end: Alignment.topCenter,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            '${_formatCount(viewsCount)}',
-                                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ✅ NOUVEAU : Interface intelligente pour l'onglet Statuts
-  Widget _buildStoryTabContent() {
-    // CAS 1 : L'utilisateur n'a PAS de story active
-    if (_userStories.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 64),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Partagez un moment éphémère',
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Votre statut disparaîtra automatiquement après 24h.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 14),
-            ),
-            const SizedBox(height: 32),
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context, 
-                  MaterialPageRoute(builder: (context) => const CreateStoryScreen())
-                ).then((_) => _loadProfileData()); // Rafraîchir après création
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [BoxShadow(color: const Color(0xFF8B5CF6).withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.add, color: Colors.white, size: 22),
-                    SizedBox(width: 8),
-                    Text(
-                      'Créer un statut',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
+                    _buildTab('STATUTS', 0),
+                    const SizedBox(width: 60),
+                    _buildTab('POSTS', 1),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
-      );
-    }
 
-    // CAS 2 : L'utilisateur a DES stories actives (Affichage style Instagram)
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12.0),
-          child: Text(
-            'Vos statuts récents',
-            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 110,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: _userStories.length + 1, // +1 pour le bouton "Ajouter"
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return _buildAddStoryButton();
-              }
-              final story = _userStories[index - 1];
-              return _buildUserStoryItem(story);
-            },
-          ),
-        ),
-        const SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0),
-          child: Text(
-            'Cliquez sur un statut pour voir qui l\'a regardé.',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ✅ Bouton pour ajouter une nouvelle story
-  Widget _buildAddStoryButton() {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const CreateStoryScreen()),
-        ).then((_) => _loadProfileData()); // Rafraîchir la liste après ajout
-      },
-      child: Padding(
-        padding: const EdgeInsets.only(right: 12.0),
-        child: Column(
-          children: [
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.grey.shade700, width: 2, style: BorderStyle.solid),
-              ),
-              child: const Center(
-                child: Icon(Icons.add, color: Colors.white, size: 30),
-              ),
+            SliverPadding(
+              padding: const EdgeInsets.all(12),
+              sliver: _selectedTab == 0 
+                  ? SliverToBoxAdapter(child: _buildStoryTabContent())
+                  : SliverToBoxAdapter(child: _userPosts.isEmpty ? _buildEmptyState() : _buildPostsGrid()),
             ),
-            const SizedBox(height: 6),
-            const Text('Ajouter', style: TextStyle(color: Colors.white, fontSize: 11)),
+            
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
           ],
         ),
       ),
     );
   }
 
-  // ✅ Affichage d'une story existante de l'utilisateur
-  Widget _buildUserStoryItem(Map<String, dynamic> story) {
-    final mediaType = story['media_type'] ?? 'image';
-    final mediaUrl = story['media_url'];
-    final bgColor = story['background_color'];
-
-    return GestureDetector(
-      onTap: () {
-        // Ouvre le lecteur de story en mode créateur
-      // Ouvre le lecteur de story en mode créateur
-Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (context) => ViewStoryScreen(
-      stories: _userStories,
-      creatorName: _profile?['full_name'] ?? 'Moi',
-      creatorId: _profile?['id'] ?? '', // ✅ CETTE LIGNE A ÉTÉ AJOUTÉE
-      creatorAvatar: _profile?['avatar_url'],
-      initialIndex: _userStories.indexOf(story),
-    ),
-  ),
-).then((_) => _loadProfileData()); // Rafraîchir au retour (au cas où la story a expiré)
-      },
-      child: Padding(
-        padding: const EdgeInsets.only(right: 12.0),
-        child: Column(
-          children: [
-            Container(
-              width: 70,
-              height: 70,
-              padding: const EdgeInsets.all(2), // Pour la bordure dégradée
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)], // Dégradé Afrifan/Insta
-                ),
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.black, width: 2),
-                  color: Colors.grey.shade900,
-                ),
-                child: ClipOval(
-                  child: _getStoryPreview(mediaType, mediaUrl, bgColor),
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text('Votre story', style: TextStyle(color: Colors.white, fontSize: 11)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ✅ Helper pour l'aperçu de la story dans le cercle
-  Widget _getStoryPreview(String mediaType, String? mediaUrl, String? bgColor) {
-    if (mediaType == 'text' && bgColor != null) {
-      return Container(
-        color: Color(int.parse(bgColor.replaceAll('#', '0xFF'))),
-        child: const Center(child: Icon(Icons.text_fields, color: Colors.white, size: 30)),
-      );
-    } else if (mediaUrl != null) {
-      return Image.network(
-        mediaUrl,
-        fit: BoxFit.cover,
-        width: 70,
-        height: 70,
-        errorBuilder: (_, __, ___) => const Icon(Icons.image, color: Colors.grey, size: 30),
-      );
-    }
-    return const Icon(Icons.image, color: Colors.grey, size: 30);
-  }
-
-  Widget _buildStatCard(String value, String label, IconData icon) {
+  Widget _buildStatCard(String value, String label, IconData icon, Color color) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
           color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFF2A2A2A)),
         ),
         child: Column(
           children: [
-            Icon(icon, color: Colors.white, size: 24),
+            Icon(icon, color: color, size: 24),
             const SizedBox(height: 8),
             Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
             const SizedBox(height: 4),
@@ -656,89 +461,189 @@ Navigator.push(
     );
   }
 
-  Widget _buildEmptyState() {
-    return Column(
-      children: [
-        const SizedBox(height: 40),
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                shape: BoxShape.circle,
-              ),
-            ),
-            Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(Icons.description, color: Colors.white, size: 48),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.add, color: Colors.black, size: 20),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          'Aucune publication.',
-          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Publiez du contenu pour le partager avec\nvotre communauté.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey, fontSize: 13),
-        ),
-      ],
-    );
-  }
-
   Widget _buildTab(String label, int index) {
     final isSelected = _selectedTab == index;
     return GestureDetector(
       onTap: () => setState(() => _selectedTab = index),
       child: Column(
         children: [
-          Icon(
-            index == 0 ? Icons.flash_on : index == 1 ? Icons.grid_view : index == 2 ? Icons.lock_outline : Icons.person_outline,
-            color: isSelected ? Colors.white : Colors.grey,
-            size: 22,
-          ),
-          const SizedBox(height: 6),
           Text(
             label,
             style: TextStyle(
               color: isSelected ? Colors.white : Colors.grey,
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              letterSpacing: 1.2,
             ),
           ),
           if (isSelected)
-            Container(
-              margin: const EdgeInsets.only(top: 6),
-              height: 2,
-              width: 20,
-              color: Colors.white,
-            ),
+            Container(margin: const EdgeInsets.only(top: 8), height: 3, width: 40, decoration: BoxDecoration(color: const Color(0xFF8B5CF6), borderRadius: BorderRadius.circular(2))),
         ],
       ),
+    );
+  }
+
+  Widget _buildStoryTabContent() {
+    if (_userStories.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), shape: BoxShape.circle), child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 48)),
+            const SizedBox(height: 16),
+            const Text('Partagez un moment éphémère', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text('Votre statut disparaîtra après 24h.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateStoryScreen())).then((_) => _loadProfileData()),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Créer un statut', style: TextStyle(fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 8.0), child: Text('Vos statuts récents', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold))),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 100,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            itemCount: _userStories.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) return _buildAddStoryButton();
+              return _buildUserStoryItem(_userStories[index - 1]);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAddStoryButton() {
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateStoryScreen())).then((_) => _loadProfileData()),
+      child: Padding(
+        padding: const EdgeInsets.only(right: 12.0),
+        child: Column(
+          children: [
+            Container(width: 65, height: 65, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade700, width: 2, style: BorderStyle.solid)), child: const Center(child: Icon(Icons.add, color: Colors.white, size: 28))),
+            const SizedBox(height: 6),
+            const Text('Ajouter', style: TextStyle(color: Colors.white, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserStoryItem(Map<String, dynamic> story) {
+    final mediaType = story['media_type'] ?? 'image';
+    final mediaUrl = story['media_url'];
+    final bgColor = story['background_color'];
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ViewStoryScreen(
+            stories: _userStories,
+            creatorName: _profile?['full_name'] ?? 'Moi',
+            creatorId: _profile?['id'] ?? '',
+            creatorAvatar: _profile?['avatar_url'],
+            initialIndex: _userStories.indexOf(story),
+          ),
+        ),
+      ).then((_) => _loadProfileData()),
+      child: Padding(
+        padding: const EdgeInsets.only(right: 12.0),
+        child: Column(
+          children: [
+            Container(
+              width: 65, height: 65, padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)])),
+              child: Container(
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.black, width: 2), color: Colors.grey.shade900),
+                child: ClipOval(child: _getStoryPreview(mediaType, mediaUrl, bgColor)),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text('Story', style: TextStyle(color: Colors.white, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _getStoryPreview(String mediaType, String? mediaUrl, String? bgColor) {
+    if (mediaType == 'text' && bgColor != null) {
+      try {
+        return Container(color: Color(int.parse(bgColor.replaceAll('#', '0xFF'))), child: const Center(child: Icon(Icons.text_fields, color: Colors.white, size: 28)));
+      } catch (e) {
+        return Container(color: const Color(0xFF8B5CF6), child: const Center(child: Icon(Icons.text_fields, color: Colors.white, size: 28)));
+      }
+    } else if (mediaUrl != null) {
+      return Image.network(mediaUrl, fit: BoxFit.cover, width: 65, height: 65, errorBuilder: (_, __, ___) => const Icon(Icons.image, color: Colors.grey, size: 28));
+    }
+    return const Icon(Icons.image, color: Colors.grey, size: 28);
+  }
+
+  Widget _buildPostsGrid() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 0.75),
+      itemCount: _userPosts.length,
+      itemBuilder: (context, index) {
+        final post = _userPosts[index];
+        final imageUrl = post['media_url'];
+        final viewsCount = post['likes_count'] ?? 0;
+        final mediaType = post['media_type'] ?? 'image';
+
+        return GestureDetector(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserPostsFeedScreen(posts: _userPosts, initialIndex: index))),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                imageUrl != null && imageUrl.toString().isNotEmpty
+                    ? Image.network(imageUrl.toString(), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey[900], child: const Icon(Icons.image, color: Colors.grey)))
+                    : Container(color: Colors.grey[900]),
+                Container(color: Colors.black.withOpacity(0.2)),
+                if (mediaType == 'video') const Positioned(top: 6, right: 6, child: Icon(Icons.play_circle, color: Colors.white, size: 20)),
+                Positioned(
+                  bottom: 0, left: 0, right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.black87, Colors.transparent], begin: Alignment.bottomCenter, end: Alignment.topCenter)),
+                    child: Text('${_formatCount(viewsCount)}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Column(
+      children: [
+        const SizedBox(height: 40),
+        Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), shape: BoxShape.circle), child: const Icon(Icons.photo_library_outlined, color: Colors.grey, size: 48)),
+        const SizedBox(height: 16),
+        const Text('Aucune publication.', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        const Text('Partagez votre premier moment\navec votre communauté.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+      ],
     );
   }
 }

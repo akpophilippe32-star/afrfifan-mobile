@@ -4,8 +4,6 @@ class DraftPost {
   String postType;
 
   /// Chemins locaux des images sélectionnées
-  /// Pour une photo simple : 1 seul chemin
-  /// Pour un slideshow : 5 à 8 chemins
   List<String> mediaPaths;
 
   /// Chemin local de la musique (uniquement pour slideshow)
@@ -13,6 +11,9 @@ class DraftPost {
 
   /// Nom du fichier musique (pour affichage)
   String? musicName;
+
+  /// ✅ NOUVEAU : URL du son en ligne (pour les sons choisis dans la caméra)
+  String? musicUrl;
 
   /// Légende du post
   String caption;
@@ -29,6 +30,7 @@ class DraftPost {
     List<String>? mediaPaths,
     this.musicPath,
     this.musicName,
+    this.musicUrl, // ✅ AJOUTÉ ICI
     this.caption = '',
     this.slideDuration = 3,
     this.isPublishing = false,
@@ -36,41 +38,24 @@ class DraftPost {
 
   /// Vérifie si le post est valide pour publication
   bool get isValid {
-    // Vérifier qu'il y a au moins une image
     if (mediaPaths.isEmpty) return false;
-
-    // Pour une photo simple : exactement 1 image
     if (postType == 'image' && mediaPaths.length != 1) return false;
-
-    // Pour un slideshow : entre 5 et 8 images
     if (postType == 'slideshow') {
       if (mediaPaths.length < 5 || mediaPaths.length > 8) return false;
-      // La musique est optionnelle pour le moment
-      // On pourra la rendre obligatoire plus tard si besoin
     }
-
     return true;
   }
 
   /// Message d'erreur si le post n'est pas valide
   String? get validationError {
-    if (mediaPaths.isEmpty) {
-      return 'Veuillez sélectionner au moins une image.';
-    }
-
+    if (mediaPaths.isEmpty) return 'Veuillez sélectionner au moins une image.';
     if (postType == 'image' && mediaPaths.length != 1) {
       return 'Pour une photo simple, sélectionnez exactement une image.';
     }
-
     if (postType == 'slideshow') {
-      if (mediaPaths.length < 5) {
-        return 'Pour un slideshow, sélectionnez au moins 5 images.';
-      }
-      if (mediaPaths.length > 8) {
-        return 'Pour un slideshow, sélectionnez maximum 8 images.';
-      }
+      if (mediaPaths.length < 5) return 'Pour un slideshow, sélectionnez au moins 5 images.';
+      if (mediaPaths.length > 8) return 'Pour un slideshow, sélectionnez maximum 8 images.';
     }
-
     return null;
   }
 
@@ -83,8 +68,8 @@ class DraftPost {
   /// Vérifie si c'est une photo simple
   bool get isSingleImage => postType == 'image';
 
-  /// Vérifie si une musique est ajoutée
-  bool get hasMusic => musicPath != null;
+  /// Vérifie si une musique est ajoutée (locale ou URL)
+  bool get hasMusic => musicPath != null || musicUrl != null; // ✅ MIS À JOUR
 
   /// Réinitialise le brouillon
   void reset() {
@@ -92,6 +77,7 @@ class DraftPost {
     mediaPaths = [];
     musicPath = null;
     musicName = null;
+    musicUrl = null; // ✅ AJOUTÉ ICI
     caption = '';
     slideDuration = 3;
     isPublishing = false;
@@ -103,6 +89,7 @@ class DraftPost {
     List<String>? mediaPaths,
     String? musicPath,
     String? musicName,
+    String? musicUrl, // ✅ AJOUTÉ ICI
     String? caption,
     int? slideDuration,
     bool? isPublishing,
@@ -112,6 +99,7 @@ class DraftPost {
       mediaPaths: mediaPaths ?? this.mediaPaths,
       musicPath: musicPath ?? this.musicPath,
       musicName: musicName ?? this.musicName,
+      musicUrl: musicUrl ?? this.musicUrl, // ✅ AJOUTÉ ICI
       caption: caption ?? this.caption,
       slideDuration: slideDuration ?? this.slideDuration,
       isPublishing: isPublishing ?? this.isPublishing,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_colors.dart';
 import '../onboarding/onboarding_screen.dart';
+import '../main/main_screen.dart'; // Assurez-vous que le chemin est correct
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -13,13 +15,30 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-        );
-      }
-    });
+    // ✅ Vérifier l'état de l'utilisateur avant de naviguer
+    _checkAuthAndNavigate();
+  }
+
+  Future<void> _checkAuthAndNavigate() async {
+    // Petite pause pour le splash (optionnel)
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (!mounted) return;
+
+    // Vérifier si un utilisateur est connecté
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user != null) {
+      // ✅ Utilisateur connecté → Accueil
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()), // Remplacez par votre écran principal
+      );
+    } else {
+      // ❌ Utilisateur non connecté → Onboarding
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+      );
+    }
   }
 
   @override

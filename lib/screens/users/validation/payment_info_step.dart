@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'confirmation_screen.dart';
 
 class PaymentInfoStep extends StatefulWidget {
-  // ✅ On reçoit toutes les données des étapes précédentes pour les transmettre à la fin
   final String fullName;
   final String? birthDate;
   final String city;
@@ -36,12 +35,27 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
   final _accountHolderController = TextEditingController();
   bool _isLoading = false;
 
-  final String _paymentMethod = 'mtn_momo';
+  // ✅ Opérateur sélectionné : 'mtn', 'moov' ou 'orange'
+  String _selectedOperator = 'mtn';
+
+  // ─── CONSTANTES DE COULEUR ────────────────────────────────
+  static const Color _primaryColor = Color(0xFF8B5CF6);
+  static const Color _backgroundColor = Color(0xFF0A0A0A);
+  static const Color _cardColor = Color(0xFF1A1A1A);
+  static const Color _borderColor = Color(0xFF2A2A2A);
+  static const Color _textColor = Colors.white;
+  static const Color _textSecondaryColor = Color(0xFF888888);
+  static const Color _hintColor = Color(0xFF555555);
+
+  // Couleurs des opérateurs
+  static const Color _mtnColor = Color(0xFFFFCC00);
+  static const Color _moovColor = Color(0xFF00B2A9);
+  static const Color _orangeColor = Color(0xFFFF6600);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: _backgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -54,7 +68,7 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
               const Text(
                 'Informations de paiement',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: _textColor,
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
@@ -63,25 +77,32 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
               const Text(
                 'Où souhaitez-vous recevoir vos gains ?',
                 style: TextStyle(
-                  color: Color(0xFF888888),
+                  color: _textSecondaryColor,
                   fontSize: 14,
                 ),
               ),
               const SizedBox(height: 30),
 
-              _buildMtnCard(),
+              // ─── SÉLECTION DE L'OPÉRATEUR ──────────────────
+              _buildOperatorSelector(),
+              const SizedBox(height: 24),
+
+              // ─── CARTE DE L'OPÉRATEUR SÉLECTIONNÉ ──────────
+              _buildOperatorCard(),
               const SizedBox(height: 30),
 
+              // ─── CHAMPS DE SAISIE ──────────────────────────
               _buildMobileMoneyFields(),
               const SizedBox(height: 40),
 
+              // ─── BOUTON DE SOUMISSION ──────────────────────
               SizedBox(
                 width: double.infinity,
                 height: 55,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _validateAndSubmit,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8B5CF6), // ✅ VIOLET
+                    backgroundColor: _primaryColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -91,7 +112,10 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
                       ? const SizedBox(
                           height: 24,
                           width: 24,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 3,
+                          ),
                         )
                       : const Text(
                           'Soumettre ma candidature',
@@ -110,6 +134,8 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
     );
   }
 
+  // ─── WIDGETS ────────────────────────────────────────────────
+
   Widget _buildProgressBar() {
     return Column(
       children: [
@@ -119,7 +145,7 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
             const Text(
               'Étape 3/3',
               style: TextStyle(
-                color: Color(0xFF8B5CF6), // ✅ VIOLET
+                color: _primaryColor,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -127,13 +153,13 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6).withOpacity(0.2), // ✅ VIOLET
+                color: _primaryColor.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
                 '3/3',
                 style: TextStyle(
-                  color: Color(0xFF8B5CF6), // ✅ VIOLET
+                  color: _primaryColor,
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                 ),
@@ -147,7 +173,7 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
           child: const LinearProgressIndicator(
             value: 1.0,
             backgroundColor: Color(0xFF1A1A1A),
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)), // ✅ VIOLET
+            valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
             minHeight: 6,
           ),
         ),
@@ -155,32 +181,149 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
     );
   }
 
-  Widget _buildMtnCard() {
+  Widget _buildOperatorSelector() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFCC00), // Jaune MTN
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Choisissez votre opérateur',
+            style: TextStyle(
+              color: _textColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _operatorOption('mtn', 'MTN', _mtnColor),
+              _operatorOption('moov', 'Moov', _moovColor),
+              _operatorOption('orange', 'Orange', _orangeColor),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _operatorOption(String value, String label, Color color) {
+    final isSelected = _selectedOperator == value;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedOperator = value),
+      child: Column(
+        children: [
+          Container(
+            width: 70,
+            height: 70,
+            decoration: BoxDecoration(
+              color: isSelected ? color.withOpacity(0.2) : _backgroundColor,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? color : Colors.grey.shade700,
+                width: isSelected ? 3 : 1,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                label[0],
+                style: TextStyle(
+                  color: isSelected ? color : Colors.grey.shade500,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? color : Colors.grey.shade500,
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          if (isSelected)
+            const SizedBox(height: 4),
+          if (isSelected)
+            Container(
+              width: 20,
+              height: 3,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOperatorCard() {
+    Color bgColor;
+    Color textColor;
+    String operatorName;
+    IconData icon;
+
+    switch (_selectedOperator) {
+      case 'mtn':
+        bgColor = _mtnColor;
+        textColor = Colors.black;
+        operatorName = 'MTN Mobile Money';
+        icon = Icons.phone_android;
+        break;
+      case 'moov':
+        bgColor = _moovColor;
+        textColor = Colors.white;
+        operatorName = 'Moov Money';
+        icon = Icons.phone_iphone;
+        break;
+      case 'orange':
+        bgColor = _orangeColor;
+        textColor = Colors.white;
+        operatorName = 'Orange Money';
+        icon = Icons.phone;
+        break;
+      default:
+        bgColor = _mtnColor;
+        textColor = Colors.black;
+        operatorName = 'MTN Mobile Money';
+        icon = Icons.phone_android;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: const BoxDecoration(
-              color: Colors.black,
+            decoration: BoxDecoration(
+              color: textColor.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.phone_android, color: Color(0xFFFFCC00), size: 28),
+            child: Icon(icon, color: textColor, size: 28),
           ),
           const SizedBox(width: 16),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'MTN Mobile Money',
+                  operatorName,
                   style: TextStyle(
-                    color: Colors.black,
+                    color: textColor,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -188,68 +331,87 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
                 Text(
                   'Retrait rapide et sécurisé',
                   style: TextStyle(
-                    color: Colors.black87,
+                    color: textColor.withOpacity(0.8),
                     fontSize: 13,
                   ),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.check_circle, color: Colors.black, size: 28),
+          const Icon(Icons.check_circle, color: Colors.white, size: 28),
         ],
       ),
     );
   }
 
+  // ✅ CHAMPS DE SAISIE RÉELLEMENT SOMBRES
   Widget _buildMobileMoneyFields() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Numéro de compte Mobile Money',
-          style: TextStyle(color: Color(0xFF888888), fontSize: 14),
+          'Numéro de compte',
+          style: TextStyle(
+            color: _textSecondaryColor,
+            fontSize: 14,
+          ),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: _cardColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF2A2A2A)),
+            border: Border.all(color: _borderColor),
           ),
           child: TextField(
             controller: _accountNumberController,
-            style: const TextStyle(color: Colors.white),
+            style: const TextStyle(color: _textColor),
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Ex: 97 XX XX XX',
-              hintStyle: TextStyle(color: Color(0xFF555555)),
-              prefixIcon: Icon(Icons.phone, color: Color(0xFF8B5CF6)), // ✅ VIOLET
+              hintStyle: TextStyle(color: _hintColor),
+              prefixIcon: const Icon(Icons.phone, color: _primaryColor),
               border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              // ✅ FORCER LE FOND SOMBRE
+              filled: true,
+              fillColor: _cardColor,
             ),
           ),
         ),
         const SizedBox(height: 20),
         const Text(
           'Nom du titulaire du compte',
-          style: TextStyle(color: Color(0xFF888888), fontSize: 14),
+          style: TextStyle(
+            color: _textSecondaryColor,
+            fontSize: 14,
+          ),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: _cardColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF2A2A2A)),
+            border: Border.all(color: _borderColor),
           ),
           child: TextField(
             controller: _accountHolderController,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
+            style: const TextStyle(color: _textColor),
+            decoration: InputDecoration(
               hintText: 'Doit correspondre à votre pièce d\'identité',
-              hintStyle: TextStyle(color: Color(0xFF555555)),
-              prefixIcon: Icon(Icons.person, color: Color(0xFF8B5CF6)), // ✅ VIOLET
+              hintStyle: TextStyle(color: _hintColor),
+              prefixIcon: const Icon(Icons.person, color: _primaryColor),
               border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              // ✅ FORCER LE FOND SOMBRE
+              filled: true,
+              fillColor: _cardColor,
             ),
           ),
         ),
@@ -257,17 +419,25 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
     );
   }
 
+  // ─── VALIDATION ET SOUMISSION ─────────────────────────────
+
   Future<void> _validateAndSubmit() async {
     if (_accountNumberController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Veuillez entrer le numéro de compte'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('Veuillez entrer le numéro de compte'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
     if (_accountHolderController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Veuillez entrer le nom du titulaire'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('Veuillez entrer le nom du titulaire'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -278,7 +448,7 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) throw Exception("Utilisateur non connecté.");
 
-      debugPrint('📤 Préparation de l\'envoi final vers Supabase...');
+      debugPrint('📤 Envoi final vers Supabase...');
 
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -295,7 +465,7 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
               premiumPrice: widget.premiumPrice,
               proPrice: widget.proPrice,
               currency: widget.currency,
-              paymentMethod: _paymentMethod,
+              paymentMethod: _selectedOperator,
               paymentAccountNumber: _accountNumberController.text.trim(),
               paymentHolderName: _accountHolderController.text.trim(),
             ),
@@ -307,7 +477,10 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
       debugPrint('❌ ERREUR : $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : ${e.toString()}'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Erreur : ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -323,4 +496,4 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
     _accountHolderController.dispose();
     super.dispose();
   }
-} // ✅ Accolade fermante ajoutée ici pour fermer _PaymentInfoStepState
+}

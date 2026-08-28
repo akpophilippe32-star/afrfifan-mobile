@@ -7,7 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'video_call_screen.dart'; // ✅ AJOUTE ÇA
+import 'package:image_picker/image_picker.dart'; // ✅ Pour l'envoi de photo
+import 'video_call_screen.dart';
 import '../../../services/messaging_service.dart';
 import '../../../theme/app_colors.dart';
 import '../creator/creator_profile_screen.dart';
@@ -34,13 +35,14 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
+  final ImagePicker _imagePicker = ImagePicker();
 
   List<Map<String, dynamic>> _messages = [];
   bool _isLoading = true;
   bool _isSending = false;
   bool _hasText = false;
-  bool _showAttachments = true;
-  bool _showEmojis = false;
+  bool _showEmojiPanel = false;
+  bool _showAttachmentMenu = false;
 
   // ✅ VARIABLES POUR LES MESSAGES VOCAUX
   bool _isRecording = false;
@@ -58,12 +60,9 @@ class _ChatScreenState extends State<ChatScreen> {
   RealtimeChannel? _realtimeChannel;
 
   static const List<String> _emojis = [
-    '😀', '😁', '😂', '🤣', '😅', '😊', '😍', '😘',
-    '😎', '🥺', '😭', '😤', '😡', '🤔', '🤫',
-    '👍', '👎', '👏', '🙌', '🤝', '💪', '🙏',
-    '❤️', '💜', '💙', '💚', '💛', '🖤', '💯', '✨',
-    '🔥', '💥', '💦', '🎉', '🎊', '🎵', '🎮', '📸',
-    '🍕', '🍔', '🍟', '🚗', '✈️', '🏠', '💼', '💰',
+    '😀', '😁', '😂', '🤣', '😅', '😊', '😍', '😘', '😎', '🥺', '😭', '😤', '😡', '🤔', '🤫',
+    '👍', '👎', '👏', '🙌', '🤝', '💪', '🙏', '❤️', '💜', '💙', '💚', '💛', '🖤', '💯', '✨',
+    '🔥', '💥', '💦', '🎉', '🎊', '🎵', '🎮', '📸', '🍕', '🍔', '🍟', '🚗', '✈️', '🏠', '💼', '💰',
   ];
 
   @override
@@ -72,8 +71,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _currentUserId = Supabase.instance.client.auth.currentUser?.id;
     _messageController.addListener(_syncHasText);
     _focusNode.addListener(() {
-      if (_focusNode.hasFocus && _showEmojis) {
-        setState(() => _showEmojis = false);
+      if (_focusNode.hasFocus && _showEmojiPanel) {
+        setState(() => _showEmojiPanel = false);
       }
     });
     _loadMessages();
@@ -97,31 +96,38 @@ class _ChatScreenState extends State<ChatScreen> {
     if (has != _hasText) setState(() => _hasText = has);
   }
 
+  // ✅ CHARGEMENT OPTIMISÉ DES MESSAGES
   Future<void> _loadMessages() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
-    final messages = await _messagingService.fetchConversation(otherUserId: widget.otherUserId);
-    if (mounted) {
-      setState(() {
-        _messages = messages;
-        _isLoading = false;
-      });
-      await _messagingService.markConversationAsRead(widget.otherUserId);
-      _scrollToBottom();
+    try {
+      final messages = await _messagingService.fetchConversation(otherUserId: widget.otherUserId);
+      if (mounted) {
+        setState(() {
+          _messages = messages;
+          _isLoading = false;
+        });
+        await _messagingService.markConversationAsRead(widget.otherUserId);
+        _scrollToBottom();
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur chargement messages: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  // ✅ REALTIME ROBUSTE : Écoute les messages entrants ET les modifications/suppressions
   void _setupRealtimeListener() {
     final supabase = Supabase.instance.client;
-    _realtimeChannel = supabase
-        .channel('messages:conversation:${widget.otherUserId}')
+    _realtimeChannel = supabase.channel('chat:${widget.otherUserId}')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'messages',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'sender_id', value: widget.otherUserId),
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'receiver_id', value: _currentUserId),
           callback: (payload) {
             final newMessage = payload.newRecord;
-            if (newMessage['receiver_id'] == _currentUserId) {
+            if (newMessage['sender_id'] == widget.otherUserId && mounted) {
               setState(() => _messages.add(newMessage));
               _messagingService.markAsRead(newMessage['id'].toString());
               _scrollToBottom();
@@ -132,30 +138,37 @@ class _ChatScreenState extends State<ChatScreen> {
           event: PostgresChangeEvent.update,
           schema: 'public',
           table: 'messages',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'sender_id', value: widget.otherUserId),
           callback: (payload) {
             final updated = payload.newRecord;
-            setState(() {
-              final idx = _messages.indexWhere((m) => m['id'].toString() == updated['id'].toString());
-              if (idx != -1) _messages[idx] = updated;
-            });
+            if (mounted && _isRelevantMessage(updated)) {
+              setState(() {
+                final idx = _messages.indexWhere((m) => m['id'].toString() == updated['id'].toString());
+                if (idx != -1) _messages[idx] = updated;
+              });
+            }
           },
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.delete,
           schema: 'public',
           table: 'messages',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'sender_id', value: widget.otherUserId),
           callback: (payload) {
             final deletedId = payload.oldRecord['id'].toString();
-            setState(() => _messages.removeWhere((m) => m['id'].toString() == deletedId));
+            if (mounted) {
+              setState(() => _messages.removeWhere((m) => m['id'].toString() == deletedId));
+            }
           },
         )
         .subscribe();
   }
 
-  Future<void> _sendMessage() => _sendContent(_messageController.text.trim());
-  Future<void> _sendLike() => _sendContent('👍');
+  bool _isRelevantMessage(Map<String, dynamic> msg) {
+    return (msg['sender_id'] == _currentUserId && msg['receiver_id'] == widget.otherUserId) ||
+           (msg['sender_id'] == widget.otherUserId && msg['receiver_id'] == _currentUserId);
+  }
+
+  Future<void> _sendMessage() => _sendContent(_messageController.text.trim(), 'text');
+  Future<void> _sendLike() => _sendContent('👍', 'text');
 
   void _onSendPressed() {
     if (_editingMessage != null) {
@@ -167,7 +180,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _sendContent(String content) async {
+    Future<void> _sendContent(String content, String type) async {
     if (content.isEmpty || _isSending) return;
     setState(() => _isSending = true);
     final reply = _replyTo;
@@ -176,6 +189,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'id': 'temp_${DateTime.now().millisecondsSinceEpoch}',
       'sender_id': _currentUserId,
       'receiver_id': widget.otherUserId,
+      'type': type,
       'content': content,
       'is_read': false,
       'created_at': DateTime.now().toIso8601String(),
@@ -195,32 +209,28 @@ class _ChatScreenState extends State<ChatScreen> {
     _syncHasText();
     _scrollToBottom();
 
-    bool success;
-    if (reply != null) {
-      success = await _insertWithReply(content, reply);
-    } else {
-      success = await _messagingService.sendMessage(receiverId: widget.otherUserId, content: content);
-    }
-
-    if (!success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur lors de l\'envoi'), backgroundColor: Colors.red));
-    }
-    if (mounted) setState(() => _isSending = false);
-  }
-
-  Future<bool> _insertWithReply(String content, Map<String, dynamic> reply) async {
     try {
+      // ✅ INSERTION DIRECTE DANS SUPABASE POUR GARANTIR QUE LE 'TYPE' EST BIEN ENREGISTRÉ
       await Supabase.instance.client.from('messages').insert({
         'sender_id': _currentUserId,
         'receiver_id': widget.otherUserId,
+        'type': type,
         'content': content,
-        'reply_to_id': reply['id'].toString(),
-        'reply_to_content': reply['content'],
-        'reply_to_name': reply['name'],
+        'reply_to_id': reply?['id']?.toString(),
+        'reply_to_content': reply?['content'],
+        'reply_to_name': reply?['name'],
+        'is_read': false,
+        'created_at': DateTime.now().toIso8601String(),
       });
-      return true;
     } catch (e) {
-      return _messagingService.sendMessage(receiverId: widget.otherUserId, content: content);
+      debugPrint('❌ Erreur envoi: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erreur lors de l\'envoi'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -254,11 +264,10 @@ class _ChatScreenState extends State<ChatScreen> {
       await Supabase.instance.client.from('messages').update({'content': newContent, 'is_edited': true}).eq('id', id);
       applyLocal();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur modification'), backgroundColor: Colors.red));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur modification'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
-    if (mounted) setState(() => _isSending = false);
   }
 
   Future<void> _deleteMessage(Map<String, dynamic> message) async {
@@ -271,9 +280,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       await Supabase.instance.client.from('messages').delete().eq('id', id);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur suppression'), backgroundColor: Colors.red));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur suppression'), backgroundColor: Colors.red));
     }
   }
 
@@ -284,13 +291,10 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: const Color(0xFF1C1C1F),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Supprimer ce message ?', style: TextStyle(color: Colors.white, fontSize: 16)),
-        content: Text('Ce message sera supprimé pour vous et votre destinataire.', style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
+        content: const Text('Ce message sera supprimé pour vous et votre destinataire.', style: TextStyle(color: Colors.grey, fontSize: 14)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('Annuler', style: TextStyle(color: Colors.grey.shade400))),
-          TextButton(
-            onPressed: () { Navigator.pop(context); _deleteMessage(message); },
-            child: const Text('Supprimer', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler', style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: () { Navigator.pop(context); _deleteMessage(message); }, child: const Text('Supprimer', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))),
         ],
       ),
     );
@@ -299,6 +303,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void _openMessageMenu(Map<String, dynamic> message) {
     final isMine = message['sender_id'] == _currentUserId;
     final content = message['content']?.toString() ?? '';
+    final type = message['type'] ?? 'text';
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1C1C1F),
@@ -317,30 +323,28 @@ class _ChatScreenState extends State<ChatScreen> {
                 });
                 _focusNode.requestFocus();
               }),
-              _menuTile(Icons.copy, 'Copier', Colors.white, () {
-                Navigator.pop(context);
-                Clipboard.setData(ClipboardData(text: content));
-ScaffoldMessenger.of(context).showSnackBar(
-  SnackBar(
-    content: const Text('Message copié'),
-    backgroundColor: Colors.grey.shade800,
-    behavior: SnackBarBehavior.floating,
-  ),
-);              }),
-              if (isMine) _menuTile(Icons.edit_outlined, 'Modifier', Colors.white, () {
-                Navigator.pop(context);
-                setState(() {
-                  _editingMessage = message;
-                  _replyTo = null;
-                  _messageController.text = content;
-                });
-                _syncHasText();
-                _focusNode.requestFocus();
-              }),
-              if (isMine) _menuTile(Icons.delete_outline, 'Supprimer', const Color(0xFFEF4444), () {
-                Navigator.pop(context);
-                _confirmDelete(message);
-              }),
+              if (type != 'voice') // ✅ PAS DE COPIE POUR LES VOCAUX
+                _menuTile(Icons.copy, 'Copier', Colors.white, () {
+                  Navigator.pop(context);
+                  Clipboard.setData(ClipboardData(text: content));
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message copié'), backgroundColor: Colors.grey, behavior: SnackBarBehavior.floating));
+                }),
+              if (isMine && type != 'voice') // ✅ PAS DE MODIFICATION POUR LES VOCAUX
+                _menuTile(Icons.edit_outlined, 'Modifier', Colors.white, () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _editingMessage = message;
+                    _replyTo = null;
+                    _messageController.text = content;
+                  });
+                  _syncHasText();
+                  _focusNode.requestFocus();
+                }),
+              if (isMine)
+                _menuTile(Icons.delete_outline, 'Supprimer', const Color(0xFFEF4444), () {
+                  Navigator.pop(context);
+                  _confirmDelete(message);
+                }),
             ],
           ),
         ),
@@ -372,7 +376,7 @@ ScaffoldMessenger.of(context).showSnackBar(
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut); // ✅ 0 car reverse: true
       }
     });
   }
@@ -381,9 +385,7 @@ ScaffoldMessenger.of(context).showSnackBar(
     try {
       final dateTime = DateTime.parse(createdAt).toLocal();
       return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return '';
-    }
+    } catch (e) { return ''; }
   }
 
   bool _isSameDay(DateTime d1, DateTime d2) => d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
@@ -398,9 +400,7 @@ ScaffoldMessenger.of(context).showSnackBar(
       if (messageDate == today) return 'Aujourd\'hui';
       if (messageDate == yesterday) return 'Hier';
       return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
-    } catch (e) {
-      return '';
-    }
+    } catch (e) { return ''; }
   }
 
   bool _isEmojiOnly(String s) {
@@ -415,24 +415,44 @@ ScaffoldMessenger.of(context).showSnackBar(
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1F),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(children: [Icon(Icons.lock_outline, color: AppColors.primary), SizedBox(width: 8), Expanded(child: Text('Chiffrement de bout en bout', style: TextStyle(color: Colors.white, fontSize: 16)))]),
-        content: Text('Personne en dehors de cet échange ne peut lire ou écouter ce qui est envoyé.', style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('OK', style: TextStyle(color: AppColors.primary)))],
+        title: const Row(children: [Icon(Icons.lock_outline, color: AppColors.primary), SizedBox(width: 8), Expanded(child: Text('Sécurité des données', style: TextStyle(color: Colors.white, fontSize: 16)))]),
+        content: const Text('Vos messages et appels sont protégés par un chiffrement en transit et au repos grâce à l\'infrastructure sécurisée de Supabase.', style: TextStyle(color: Colors.grey, fontSize: 14)),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK', style: TextStyle(color: AppColors.primary)))],
       ),
     );
   }
 
-  void _onAttachmentTap(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('« $label » bientôt disponible'), backgroundColor: Colors.grey.shade800, behavior: SnackBarBehavior.floating));
+  // ========================================================================
+  // ✅ ENVOI DE PHOTO (SANS VIDÉO)
+  // ========================================================================
+  Future<void> _pickAndSendImage() async {
+    final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (image == null) return;
+
+    setState(() { _isSending = true; _showAttachmentMenu = false; });
+    try {
+      final fileName = 'img_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileBytes = await File(image.path).readAsBytes();
+      
+      await Supabase.instance.client.storage.from('chat_images').uploadBinary(fileName, fileBytes);
+      final imageUrl = Supabase.instance.client.storage.from('chat_images').getPublicUrl(fileName);
+
+      await _sendContent(imageUrl, 'image');
+    } catch (e) {
+      debugPrint('❌ Erreur envoi image: $e');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur lors de l\'envoi de l\'image'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
   }
 
   // ========================================================================
-  // ✅ LOGIQUE DES MESSAGES VOCAUX (NETTOYÉE)
+  // ✅ LOGIQUE DES MESSAGES VOCAUX (SÉCURISÉE)
   // ========================================================================
-
   Future<void> _startRecording() async {
     if (await _audioRecorder.hasPermission()) {
-      final directory = await getTemporaryDirectory();
+      // ✅ UTILISATION DE getApplicationDocumentsDirectory POUR ÉVITER LA SUPPRESSION PAR LE SYSTÈME
+      final directory = await getApplicationDocumentsDirectory();
       _currentRecordingPath = '${directory.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       
       await _audioRecorder.start(
@@ -440,14 +460,9 @@ ScaffoldMessenger.of(context).showSnackBar(
         path: _currentRecordingPath!,
       );
       
-      setState(() {
-        _isRecording = true;
-        _isRecordingStopped = false;
-        _recordingSeconds = 0;
-      });
-      
+      setState(() { _isRecording = true; _isRecordingStopped = false; _recordingSeconds = 0; });
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        setState(() => _recordingSeconds++);
+        if (mounted) setState(() => _recordingSeconds++);
       });
     }
   }
@@ -455,43 +470,25 @@ ScaffoldMessenger.of(context).showSnackBar(
   Future<void> _stopRecording() async {
     _recordingTimer?.cancel();
     final path = await _audioRecorder.stop();
-    
-    setState(() {
-      _isRecording = false;
-      _isRecordingStopped = true; 
-      _currentRecordingPath = path;
-    });
+    if (mounted) setState(() { _isRecording = false; _isRecordingStopped = true; _currentRecordingPath = path; });
   }
 
   void _cancelRecording() {
     _recordingTimer?.cancel();
     _audioRecorder.stop();
-    setState(() {
-      _isRecording = false;
-      _isRecordingStopped = false;
-      _recordingSeconds = 0;
-      _currentRecordingPath = null;
-    });
+    if (mounted) setState(() { _isRecording = false; _isRecordingStopped = false; _recordingSeconds = 0; _currentRecordingPath = null; });
   }
 
-    Future<void> _sendVoiceMessage() async {
+  Future<void> _sendVoiceMessage() async {
     if (_currentRecordingPath == null) return;
-    
     setState(() => _isSending = true);
     try {
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.m4a';
+      final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       final fileBytes = await File(_currentRecordingPath!).readAsBytes();
       
-      // 1. Upload vers Supabase Storage
-      await Supabase.instance.client.storage
-          .from('voice_messages')
-          .uploadBinary(fileName, fileBytes);
+      await Supabase.instance.client.storage.from('voice_messages').uploadBinary(fileName, fileBytes);
+      final audioUrl = Supabase.instance.client.storage.from('voice_messages').getPublicUrl(fileName);
 
-      final audioUrl = Supabase.instance.client.storage
-          .from('voice_messages')
-          .getPublicUrl(fileName);
-
-      // ✅ 2. CRÉER LE MESSAGE OPTIMISTIQUE (comme pour les textes)
       final optimisticVoice = {
         'id': 'temp_voice_${DateTime.now().millisecondsSinceEpoch}',
         'sender_id': _currentUserId,
@@ -503,13 +500,9 @@ ScaffoldMessenger.of(context).showSnackBar(
         'created_at': DateTime.now().toIso8601String(),
       };
 
-      // ✅ 3. L'AJOUTER À L'INTERFACE TOUT DE SUITE
-      setState(() {
-        _messages.add(optimisticVoice);
-      });
+      setState(() { _messages.add(optimisticVoice); });
       _scrollToBottom();
 
-      // ✅ 4. ENVOYER À SUPABASE (en arrière-plan)
       await Supabase.instance.client.from('messages').insert({
         'sender_id': _currentUserId,
         'receiver_id': widget.otherUserId,
@@ -520,19 +513,10 @@ ScaffoldMessenger.of(context).showSnackBar(
         'created_at': DateTime.now().toIso8601String(),
       });
       
-      // 5. Reset de l'interface
-      setState(() {
-        _isRecordingStopped = false;
-        _recordingSeconds = 0;
-        _currentRecordingPath = null;
-      });
+      if (mounted) setState(() { _isRecordingStopped = false; _recordingSeconds = 0; _currentRecordingPath = null; });
     } catch (e) {
-      print("❌ Erreur envoi vocal : $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erreur: $e"), backgroundColor: Colors.red),
-        );
-      }
+      debugPrint("❌ Erreur envoi vocal : $e");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur: $e"), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -541,10 +525,10 @@ ScaffoldMessenger.of(context).showSnackBar(
   Future<void> _playVoiceMessage(String messageId, String url) async {
     if (_playingMessageId == messageId) {
       await _audioPlayer.stop();
-      setState(() => _playingMessageId = null);
+      if (mounted) setState(() => _playingMessageId = null);
       return;
     }
-    setState(() => _playingMessageId = messageId);
+    if (mounted) setState(() => _playingMessageId = messageId);
     await _audioPlayer.setUrl(url);
     await _audioPlayer.play();
     _audioPlayer.playerStateStream.listen((state) {
@@ -557,11 +541,13 @@ ScaffoldMessenger.of(context).showSnackBar(
   // ========================================================================
   // ✅ INTERFACE UTILISATEUR (BUILD)
   // ========================================================================
-
   @override
   Widget build(BuildContext context) {
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
       backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: true, // ✅ Gestion fluide du clavier
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
@@ -601,14 +587,8 @@ ScaffoldMessenger.of(context).showSnackBar(
               final currentUserId = Supabase.instance.client.auth.currentUser?.id;
               if (currentUserId != null) {
                 try {
-                  final response = await Supabase.instance.client.from('calls').insert({
-                    'caller_id': currentUserId,
-                    'receiver_id': widget.otherUserId,
-                    'status': 'ongoing',
-                    'call_type': 'audio',
-                  }).select();
-                  final callId = response[0]['id'];
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => VoiceCallScreen(otherUserId: widget.otherUserId, otherUserName: widget.otherUserName, otherUserAvatar: widget.otherUserAvatar, callId: callId, isReceiver: false)));
+                  final response = await Supabase.instance.client.from('calls').insert({'caller_id': currentUserId, 'receiver_id': widget.otherUserId, 'status': 'ongoing', 'call_type': 'audio'}).select();
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => VoiceCallScreen(otherUserId: widget.otherUserId, otherUserName: widget.otherUserName, otherUserAvatar: widget.otherUserAvatar, callId: response[0]['id'], isReceiver: false)));
                 } catch (e) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
                 }
@@ -621,70 +601,64 @@ ScaffoldMessenger.of(context).showSnackBar(
               final currentUserId = Supabase.instance.client.auth.currentUser?.id;
               if (currentUserId != null) {
                 try {
-                  // 1. Créer l'appel vidéo dans Supabase
-                  final response = await Supabase.instance.client.from('calls').insert({
-                    'caller_id': currentUserId,
-                    'receiver_id': widget.otherUserId,
-                    'status': 'ongoing',
-                    'call_type': 'video', // ✅ On précise que c'est une vidéo
-                  }).select();
-                  
-                  final callId = response[0]['id'];
-                  
-                  // 2. Ouvrir l'écran Vidéo !
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => VideoCallScreen(
-                        otherUserId: widget.otherUserId,
-                        otherUserName: widget.otherUserName,
-                        otherUserAvatar: widget.otherUserAvatar,
-                        callId: callId,
-                        isReceiver: false,
-                      ),
-                    ),
-                  );
+                  final response = await Supabase.instance.client.from('calls').insert({'caller_id': currentUserId, 'receiver_id': widget.otherUserId, 'status': 'ongoing', 'call_type': 'video'}).select();
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => VideoCallScreen(otherUserId: widget.otherUserId, otherUserName: widget.otherUserName, otherUserAvatar: widget.otherUserAvatar, callId: response[0]['id'], isReceiver: false)));
                 } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red)
-                    );
-                  }
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
                 }
               }
             },
-          ),        ],
+          ),
+        ],
       ),
       body: Column(
         children: [
-          Expanded(
+                    Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    itemCount: _messages.length + (_messages.isEmpty ? 3 : 2),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        final firstDate = _messages.isNotEmpty ? _messages[0]['created_at'].toString() : DateTime.now().toIso8601String();
-                        return _dateSeparator(firstDate);
-                      }
-                      if (index == 1) return _encryptionNotice();
-                      if (_messages.isEmpty) {
-                        return Padding(padding: const EdgeInsets.only(top: 40), child: Center(child: Text('Envoyez le premier message !', style: TextStyle(color: Colors.grey.shade700, fontSize: 14))));
-                      }
-                      final i = index - 2;
-                      final message = _messages[i];
-                      Widget? separator;
-                      if (i > 0) {
-                        final previous = DateTime.parse(_messages[i - 1]['created_at'].toString());
-                        final current = DateTime.parse(message['created_at'].toString());
-                        if (!_isSameDay(previous, current)) separator = _dateSeparator(message['created_at'].toString());
-                      }
-                      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [if (separator != null) separator, _messageBubble(message)]);
-                    },
-                  ),
+                : _messages.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Envoyez le premier message !',
+                          style: TextStyle(color: Colors.grey, fontSize: 14),
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        reverse: true, // ✅ INVERSÉ POUR UNE GESTION PARFAITE DU CLAVIER
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        itemCount: _messages.length, // ✅ CORRECTION CRUCIALE : exactement la longueur de la liste
+                        itemBuilder: (context, index) {
+                          // Calcul de l'index réel grâce à reverse: true
+                          final i = _messages.length - 1 - index;
+                          final message = _messages[i];
+                          
+                          Widget? separator;
+                          
+                          // 1. Pour le tout dernier message de la liste (qui s'affiche en HAUT de l'écran grâce à reverse: true)
+                          if (i == _messages.length - 1) {
+                            separator = _dateSeparator(message['created_at'].toString());
+                          } 
+                          // 2. Pour les autres messages, on compare avec le message "suivant" (qui est visuellement au-dessus)
+                          else if (i < _messages.length - 1) {
+                            final next = DateTime.parse(_messages[i + 1]['created_at'].toString());
+                            final current = DateTime.parse(message['created_at'].toString());
+                            if (!_isSameDay(next, current)) {
+                              separator = _dateSeparator(message['created_at'].toString());
+                            }
+                          }
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (separator != null) separator,
+                              _messageBubble(message),
+                            ],
+                          );
+                        },
+                      ),
           ),
+          // ✅ ZONE DE SAISIE ÉPURÉE (PAS DE 6 BOUTONS INUTILES)
           Container(
             color: Colors.black,
             child: SafeArea(
@@ -697,98 +671,25 @@ ScaffoldMessenger.of(context).showSnackBar(
                   else if (_replyTo != null)
                     _contextBar(icon: Icons.reply, title: 'Réponse à ${_replyTo!['name']}', content: _replyTo!['content']?.toString() ?? '', onCancel: () => setState(() => _replyTo = null)),
                   
-                  // ✅ 1. BARRE D'ENREGISTREMENT EN COURS
-                  if (_isRecording)
-                    Container(
-                      color: Colors.black,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          GestureDetector(
-                            onTap: _cancelRecording,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.circle),      
-                        child: const Icon(Icons.delete_outline, color: Colors.red, size: 28),
-                            ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                Container(width: 16, height: 16, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${(_recordingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_recordingSeconds % 60).toString().padLeft(2, '0')}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                                ),
-                                const Text('Enregistrement...', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                              ],
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: _stopRecording,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                              child: const Icon(Icons.stop, color: Colors.white, size: 28),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  // ✅ 2. BARRE APRÈS ARRÊT (En attente d'envoi)
-                  else if (_isRecordingStopped)
-                    Container(
-                      color: Colors.black,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          GestureDetector(
-                            onTap: _cancelRecording,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.circle),                              child: const Icon(Icons.delete_outline, color: Colors.red, size: 28),
-                            ),
-                          ),
-                          Expanded(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.mic, color: AppColors.primary, size: 24),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Message vocal • ${(_recordingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_recordingSeconds % 60).toString().padLeft(2, '0')}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: _sendVoiceMessage,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                              child: const Icon(Icons.send, color: Colors.white, size: 28),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  // ✅ 3. BARRE NORMALE (Texte + Micro ou Envoi)
-                  else
+                  if (_isRecording) _recordingBar(),
+                  if (_isRecordingStopped) _previewVoiceBar(),
+                  
+                  if (!_isRecording && !_isRecordingStopped)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
+                          // ✅ BOUTON TROMBONE (UNIQUEMENT POUR PHOTO)
                           GestureDetector(
-                            onTap: () => setState(() { _showAttachments = !_showAttachments; _showEmojis = false; }),
+                            onTap: () {
+                              setState(() { _showAttachmentMenu = !_showAttachmentMenu; _showEmojiPanel = false; });
+                              if (_showAttachmentMenu) _pickAndSendImage();
+                            },
                             child: Container(
                               width: 40, height: 40,
-                              decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                              child: AnimatedRotation(turns: _showAttachments ? 0.125 : 0, duration: const Duration(milliseconds: 200), child: const Icon(Icons.add, color: Colors.white)),
+                              decoration: const BoxDecoration(color: Color(0xFF2A2A2E), shape: BoxShape.circle),
+                              child: const Icon(Icons.attach_file, color: Colors.white70, size: 22),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -812,7 +713,7 @@ decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.ci
                                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
                                 suffixIcon: IconButton(
                                   icon: const Icon(Icons.emoji_emotions_outlined, color: AppColors.primary),
-                                  onPressed: () => setState(() { _showEmojis = !_showEmojis; if (_showEmojis) _focusNode.unfocus(); }),
+                                  onPressed: () => setState(() { _showEmojiPanel = !_showEmojiPanel; _showAttachmentMenu = false; if (_showEmojiPanel) _focusNode.unfocus(); }),
                                 ),
                               ),
                               onSubmitted: (_) => _onSendPressed(),
@@ -826,33 +727,58 @@ decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.ci
                           else if (_hasText)
                             GestureDetector(onTap: _sendMessage, child: Container(width: 40, height: 40, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: const Icon(Icons.send, color: Colors.white, size: 20)))
                           else
-                            GestureDetector(
-                              onTap: _startRecording,
-                              child: Container(width: 40, height: 40, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: const Icon(Icons.mic, color: Colors.white, size: 24)),
-                            ),
+                            GestureDetector(onTap: _startRecording, child: Container(width: 40, height: 40, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: const Icon(Icons.mic, color: Colors.white, size: 24))),
                         ],
                       ),
                     ),
-                  if (_showEmojis) _emojiPanel()
-                  else if (_showAttachments) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                      child: Row(
-                        children: [
-                          _attachmentButton('Photo', Icons.image_outlined, const Color(0xFF38B6F1)),
-                          _attachmentButton('Caméra', Icons.photo_camera, const Color(0xFF38B6F1)),
-                          _attachmentGif(),
-                          _attachmentButton('Audio', Icons.mic, const Color(0xFF22C55E)),
-                          _attachmentButton('Fichier', Icons.description_outlined, const Color(0xFFF59E0B)),
-                          _attachmentButton('Localisation', Icons.place, const Color(0xFFEF4444)),
-                        ],
-                      ),
-                    ),
-                  ],
+                  if (_showEmojiPanel) _emojiPanel(),
                 ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _recordingBar() {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          GestureDetector(onTap: _cancelRecording, child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.circle), child: const Icon(Icons.delete_outline, color: Colors.red, size: 28))),
+          Expanded(
+            child: Column(children: [
+              Container(width: 16, height: 16, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
+              const SizedBox(height: 8),
+              Text('${(_recordingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_recordingSeconds % 60).toString().padLeft(2, '0')}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+              const Text('Enregistrement...', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ]),
+          ),
+          GestureDetector(onTap: _stopRecording, child: Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), child: const Icon(Icons.stop, color: Colors.white, size: 28))),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewVoiceBar() {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          GestureDetector(onTap: _cancelRecording, child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.circle), child: const Icon(Icons.delete_outline, color: Colors.red, size: 28))),
+          Expanded(
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.mic, color: AppColors.primary, size: 24),
+              const SizedBox(width: 8),
+              Text('Message vocal • ${(_recordingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_recordingSeconds % 60).toString().padLeft(2, '0')}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+          GestureDetector(onTap: _sendVoiceMessage, child: Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: const Icon(Icons.send, color: Colors.white, size: 28))),
         ],
       ),
     );
@@ -911,8 +837,9 @@ decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.ci
                 textAlign: TextAlign.center,
                 text: TextSpan(
                   children: [
-                    TextSpan(text: 'Les messages et les appels sont chiffrés de bout en bout. ', style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
-                    TextSpan(text: 'En savoir plus', style: TextStyle(color: AppColors.primary, fontSize: 13), recognizer: TapGestureRecognizer()..onTap = _showEncryptionInfo),
+                    const TextSpan(text: 'Vos messages sont protégés par un ', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                    TextSpan(text: 'chiffrement en transit et au repos', style: TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.bold), recognizer: TapGestureRecognizer()..onTap = _showEncryptionInfo),
+                    const TextSpan(text: '.', style: TextStyle(color: Colors.grey, fontSize: 13)),
                   ],
                 ),
               ),
@@ -943,12 +870,32 @@ decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.ci
       );
     }
 
+    if (messageType == 'image') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start, children: [
+          GestureDetector(
+            onLongPress: () => _openMessageMenu(message),
+            child: Container(
+              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.65),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade800, width: 1)),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: Image.network(content, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(height: 150, color: Colors.grey.shade800, child: const Center(child: Icon(Icons.broken_image, color: Colors.white54)))),
+              ),
+            ),
+          ),
+        ]),
+      );
+    }
+
     if (messageType == 'voice') {
       final isPlaying = _playingMessageId == message['id'];
       return Padding(
         padding: const EdgeInsets.only(bottom: 14),
         child: Row(mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start, children: [
           GestureDetector(
+            onLongPress: () => _openMessageMenu(message),
             onTap: () => _playVoiceMessage(message['id'], content),
             child: Container(
               constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
@@ -1057,43 +1004,6 @@ decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), shape: BoxShape.ci
       ),
     );
   }
-
-  Widget _attachmentButton(String label, IconData icon, Color color) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _onAttachmentTap(label),
-        behavior: HitTestBehavior.opaque,
-        child: Column(
-          children: [
-            Container(width: 52, height: 48, decoration: BoxDecoration(color: const Color(0xFF1C1C1F), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 24)),
-            const SizedBox(height: 6),
-            Text(label, style: const TextStyle(color: Colors.white, fontSize: 11), textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _attachmentGif() {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _onAttachmentTap('GIF'),
-        behavior: HitTestBehavior.opaque,
-        child: Column(
-          children: [
-            Container(
-              width: 52,
-              height: 48,
-              decoration: BoxDecoration(color: const Color(0xFF1C1C1F), borderRadius: BorderRadius.circular(12)),
-              child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(6)), child: const Text('GIF', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)))),
-            ),
-            const SizedBox(height: 6),
-            const Text('GIF', style: TextStyle(color: Colors.white, fontSize: 11)),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _BubbleTailPainter extends CustomPainter {
@@ -1108,15 +1018,9 @@ class _BubbleTailPainter extends CustomPainter {
     final h = size.height;
     final path = Path();
     if (!mirror) {
-      path.moveTo(w, 0);
-      path.lineTo(w, h);
-      path.quadraticBezierTo(0, h, 0, 0);
-      path.close();
+      path.moveTo(w, 0); path.lineTo(w, h); path.quadraticBezierTo(0, h, 0, 0); path.close();
     } else {
-      path.moveTo(0, 0);
-      path.lineTo(0, h);
-      path.quadraticBezierTo(w, h, w, 0);
-      path.close();
+      path.moveTo(0, 0); path.lineTo(0, h); path.quadraticBezierTo(w, h, w, 0); path.close();
     }
     canvas.drawPath(path, paint);
   }

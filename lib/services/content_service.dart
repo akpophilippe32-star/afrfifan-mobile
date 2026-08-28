@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:image_picker/image_picker.dart'; // ✅ Indispensable pour XFile
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http; // ✅ Pour télécharger les URLs
+import 'dart:io'; // ✅ Pour créer des fichiers temporaires
+import 'package:path_provider/path_provider.dart'; // ✅ Pour les fichiers temporaires
 import '../screens/users/create/models/draft_post.dart';
 
 class ContentService {
@@ -13,10 +16,8 @@ class ContentService {
       final fileName = 'post_${userId}_$timestamp.jpg';
       final filePath = '$userId/$fileName';
 
-      // ✅ ASTUCE WEB/MOBILE : On lit les octets (bytes) au lieu d'utiliser dart:io File
       final bytes = await imageFile.readAsBytes();
 
-      // ✅ uploadBinary accepte les Uint8List, ce qui marche partout
       await _supabase.storage
           .from('post-images')
           .uploadBinary(filePath, bytes);
@@ -59,7 +60,7 @@ class ContentService {
     }
   }
 
-  /// Publie un post (Compatible Web & Mobile)
+  /// Publie un post (Compatible Web & Mobile + URLs IA)
   Future<String?> publishPost(DraftPost draft) async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
@@ -68,12 +69,35 @@ class ContentService {
     }
 
     try {
-      debugPrint('📤 Upload de ${draft.mediaPaths.length} média(s)...');
+      debugPrint(' Upload de ${draft.mediaPaths.length} média(s)...');
       final List<String> imageUrls = [];
 
       for (final mediaPath in draft.mediaPaths) {
-        // ✅ On crée un XFile à partir du chemin (marche sur mobile et web)
-        final xFile = XFile(mediaPath);
+        XFile xFile;
+        
+        // ✅ DÉTECTION URL vs FICHIER LOCAL
+        if (mediaPath.startsWith('http://') || mediaPath.startsWith('https://')) {
+          // C'est une URL (ex: image IA de Pollinations)
+          debugPrint('🔽 Téléchargement de l\'image depuis URL...');
+          
+          final response = await http.get(Uri.parse(mediaPath));
+          if (response.statusCode != 200) {
+            debugPrint('❌ Échec téléchargement URL');
+            return null;
+          }
+          
+          // Créer un fichier temporaire
+          final tempDir = await getTemporaryDirectory();
+          final tempFile = File('${tempDir.path}/ai_image_${DateTime.now().millisecondsSinceEpoch}.jpg');
+          await tempFile.writeAsBytes(response.bodyBytes);
+          
+          xFile = XFile(tempFile.path);
+          debugPrint('✅ Image téléchargée dans fichier temporaire');
+        } else {
+          // C'est un fichier local
+          xFile = XFile(mediaPath);
+        }
+        
         final url = await uploadImage(xFile, user.id);
         if (url == null) {
           debugPrint('❌ Échec upload média');
@@ -123,7 +147,7 @@ class ContentService {
 
       return postId;
     } catch (e) {
-      debugPrint('❌ Erreur publication: $e');
+      debugPrint(' Erreur publication: $e');
       return null;
     }
   }
@@ -138,11 +162,9 @@ class ContentService {
     try {
       String mediaType = 'image';
       
-      // Upload du média
       final mediaUrl = await uploadImage(mediaFile, userId);
       if (mediaUrl == null) return null;
 
-      // Insertion en base
       final storyData = {
         'creator_id': userId,
         'media_url': mediaUrl,
@@ -160,7 +182,7 @@ class ContentService {
       debugPrint('✅ Story publiée avec ID: ${response['id']}');
       return response['id'] as String;
     } catch (e) {
-      debugPrint('❌ Erreur publication story: $e');
+      debugPrint(' Erreur publication story: $e');
       return null;
     }
   }
@@ -171,7 +193,6 @@ class ContentService {
     if (user == null) return false;
 
     try {
-      // 1. Récupérer les infos du post
       final postResponse = await _supabase
           .from('posts')
           .select('user_id, media_url, music_url, media_type')
@@ -183,13 +204,11 @@ class ContentService {
         return false;
       }
 
-      // 2. Vérifier que l'utilisateur est bien l'auteur
       if (postResponse['user_id'] != user.id) {
         debugPrint('❌ Vous n\'êtes pas l\'auteur de ce post');
         return false;
       }
 
-      // 3. Récupérer tous les médias du post (pour slideshow)
       final mediaResponse = await _supabase
           .from('post_media')
           .select('media_url')
@@ -197,7 +216,6 @@ class ContentService {
 
       final mediaList = List<Map<String, dynamic>>.from(mediaResponse);
 
-      // 4. Supprimer les fichiers image de Storage
       final allImageUrls = <String>[
         if (postResponse['media_url'] != null) postResponse['media_url'] as String,
         ...mediaList.map((m) => m['media_url'] as String),
@@ -214,7 +232,6 @@ class ContentService {
         }
       }
 
-      // 5. Supprimer le fichier musique de Storage
       if (postResponse['music_url'] != null) {
         try {
           final musicPath = _extractFilePathFromUrl(
@@ -225,17 +242,15 @@ class ContentService {
             await _supabase.storage.from('post-music').remove([musicPath]);
           }
         } catch (e) {
-          debugPrint('⚠️ Erreur suppression fichier musique: $e');
+          debugPrint('️ Erreur suppression fichier musique: $e');
         }
       }
 
-      // 6. Supprimer les entrées post_media
       await _supabase
           .from('post_media')
           .delete()
           .eq('post_id', postId);
 
-      // 7. Supprimer le post
       await _supabase
           .from('posts')
           .delete()
@@ -271,11 +286,9 @@ class ContentService {
       final uri = Uri.parse(url);
       final pathSegments = uri.pathSegments;
       
-      // Trouver l'index du bucket dans le chemin
       final bucketIndex = pathSegments.indexOf(bucketName);
       if (bucketIndex == -1) return null;
 
-      // Le chemin du fichier est après le bucket
       final filePath = pathSegments.sublist(bucketIndex + 1).join('/');
       return filePath.isNotEmpty ? filePath : null;
     } catch (e) {
@@ -285,5 +298,4 @@ class ContentService {
   }
 }
 
-/// Instance globale facile à utiliser
 final contentService = ContentService();

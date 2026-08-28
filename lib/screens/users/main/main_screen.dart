@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_colors.dart';
 import '../home/discovery_screen.dart';
 import '../explore/explore_screen.dart';
-import '../create/camera_screen.dart'; // ✅ NOUVEAU : On importe la caméra style Snapchat
+import '../create/camera_screen.dart';
 import '../messages/messages_screen.dart';
 import '../profile/profile_screen.dart';
 
@@ -14,21 +14,46 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  int _currentIndex = 0; // 0=Home, 1=Explore, 2=+, 3=Messages, 4=Profile
+  
+  // ✅ NOUVEAU : Contrôleur pour gérer le swipe horizontal
+  final PageController _pageController = PageController();
 
-  final List<Widget> _screens = [
-    const DiscoveryScreen(),
-    const ExploreScreen(),
-    const MessagesScreen(),
-    const ProfileScreen(),
+  // ✅ Les 4 vrais écrans (le "+" n'est pas un écran, c'est une action)
+  final List<Widget> _screens = const [
+    DiscoveryScreen(),   // Index PageView: 0  -> Index Nav: 0
+    ExploreScreen(),     // Index PageView: 1  -> Index Nav: 1
+    MessagesScreen(),    // Index PageView: 2  -> Index Nav: 3
+    ProfileScreen(),     // Index PageView: 3  -> Index Nav: 4
   ];
+
+  @override
+  void dispose() {
+    _pageController.dispose(); // ✅ Nettoyage mémoire
+    super.dispose();
+  }
+
+  // ✅ ASTUCE : Convertir l'index de la barre de nav en index de PageView
+  int _getPageIndexFromNavIndex(int navIndex) {
+    if (navIndex < 2) return navIndex;       // 0 -> 0, 1 -> 1
+    if (navIndex > 2) return navIndex - 1;   // 3 -> 2, 4 -> 3
+    return 0; // Fallback pour le bouton "+"
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: IndexedStack(
-        index: _currentIndex > 1 ? _currentIndex - 1 : _currentIndex,
+      // ✅ REMPLACÉ IndexedStack PAR PageView pour le swipe
+      body: PageView(
+        controller: _pageController,
+        physics: const BouncingScrollPhysics(), // Effet de rebond fluide
+        onPageChanged: (pageIndex) {
+          // Quand on swipe, on met à jour l'onglet actif en bas
+          setState(() {
+            _currentIndex = pageIndex < 2 ? pageIndex : pageIndex + 1;
+          });
+        },
         children: _screens,
       ),
       bottomNavigationBar: Container(
@@ -41,15 +66,24 @@ class _MainScreenState extends State<MainScreen> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) async {
-            // Si c'est le bouton "+" (index 2)
+            // ✅ GESTION DU BOUTON "+" (Index 2)
             if (index == 2) {
               await _openCameraScreen();
-              return; // On ne change pas l'onglet actif
+              return; // On ne change pas l'onglet actif, on reste où on était
             }
 
+            // ✅ GESTION DES AUTRES ONGLETS
             setState(() {
               _currentIndex = index;
             });
+            
+            // Animation fluide vers la page correspondante
+            final targetPageIndex = _getPageIndexFromNavIndex(index);
+            _pageController.animateToPage(
+              targetPageIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.black,
@@ -59,36 +93,20 @@ class _MainScreenState extends State<MainScreen> {
           unselectedFontSize: 11,
           items: [
             // 1. Home
-            const BottomNavigationBarItem(
+            BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
               activeIcon: Icon(Icons.home_filled),
               label: 'Home',
             ),
             // 2. Explorer
-            const BottomNavigationBarItem(
+            BottomNavigationBarItem(
               icon: Icon(Icons.explore_outlined),
               activeIcon: Icon(Icons.explore),
               label: 'Explorer',
             ),
             // 3. Créer (+) - Style TikTok/Snapchat
             BottomNavigationBarItem(
-              icon: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Colors.purple,
-                      Color(0xFF8B5CF6), // Couleur Afrifan
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.add,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
+              icon: Icon(Icons.add_circle, size: 40, color: Color(0xFF8B5CF6)), // Simplifié pour plus de propreté
               label: '', 
             ),
             // 4. Messages
@@ -99,9 +117,7 @@ class _MainScreenState extends State<MainScreen> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    const Center(
-                      child: Icon(Icons.chat_bubble_outline, size: 24),
-                    ),
+                    Center(child: Icon(Icons.chat_bubble_outline, size: 24)),
                     Positioned(
                       right: -4,
                       top: -2,
@@ -111,7 +127,7 @@ class _MainScreenState extends State<MainScreen> {
                           color: Colors.red,
                           shape: BoxShape.circle,
                         ),
-                        child: const Text(
+                        child: Text(
                           '9',
                           style: TextStyle(
                             color: Colors.white,
@@ -124,17 +140,15 @@ class _MainScreenState extends State<MainScreen> {
                   ],
                 ),
               ),
-              activeIcon: const SizedBox(
+              activeIcon: SizedBox(
                 width: 28,
                 height: 28,
-                child: Center(
-                  child: Icon(Icons.chat_bubble, size: 24),
-                ),
+                child: Center(child: Icon(Icons.chat_bubble, size: 24)),
               ),
               label: 'Messages',
             ),
             // 5. Profile
-            const BottomNavigationBarItem(
+            BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),
               activeIcon: Icon(Icons.person),
               label: 'Profile',
@@ -151,10 +165,9 @@ class _MainScreenState extends State<MainScreen> {
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) {
-          return const CameraScreen(); // ✅ NOUVEAU : On ouvre la caméra
+          return const CameraScreen();
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Animation slide depuis le bas (style modal moderne)
           const begin = Offset(0.0, 1.0);
           const end = Offset.zero;
           const curve = Curves.easeOutCubic;

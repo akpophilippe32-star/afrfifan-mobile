@@ -1,15 +1,17 @@
-import 'dart:ui'; // ✅ Pour l'effet de flou (ImageFilter)
+import 'dart:ui'; // Pour l'effet de flou (ImageFilter)
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart'; // Pour le double-tap
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:share_plus/share_plus.dart'; // Pour le partage dynamique
 import '../../../theme/app_colors.dart';
 import '../explore/explore_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../creator/creator_profile_screen.dart';
-import '../creator/subscription_payment_screen.dart'; // ✅ Pour le paiement d'abonnement
-import '../../../widgets/tip_dialog.dart'; // ✅ Pour le pourboire
-import '../../../services/share_service.dart';
-import '../../../widgets/report_dialog.dart'; // ✅ AJOUT : Pour le signalement
-import 'watch_live_screen.dart'; // ✅ Ajouté pour accéder à l'écran du Live
+import '../creator/subscription_payment_screen.dart';
+import '../../../widgets/tip_dialog.dart';
+import '../../../widgets/report_dialog.dart';
+import 'watch_live_screen.dart';
+import 'post_detail_screen.dart';
 class DiscoveryScreen extends StatefulWidget {
   const DiscoveryScreen({super.key});
 
@@ -17,18 +19,25 @@ class DiscoveryScreen extends StatefulWidget {
   State<DiscoveryScreen> createState() => _DiscoveryScreenState();
 }
 
-class _DiscoveryScreenState extends State<DiscoveryScreen> {
+// ✅ AJOUT DU MIXIN NATIF DE FLUTTER POUR GARDER L'ÉCRAN EN MÉMOIRE
+class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAliveClientMixin {
   final PageController _horizontalPageController = PageController(initialPage: 1);
   int _selectedTab = 1; // 0 = Abonnés, 1 = Pour toi
-  
+
   List<Map<String, dynamic>> _posts = [];
   final Set<String> _likedPostIds = {};
-  final Set<String> _followedCreatorIds = {}; // Gratuit (Follow)
-  final Set<String> _subscribedCreatorIds = {}; // Payant (Subscription)
+  final Set<String> _followedCreatorIds = {};
+  final Set<String> _subscribedCreatorIds = {};
+
+  // Pour l'animation du cœur au double-tap
+  final Map<String, bool> _heartAnimations = <String, bool>{};
   
   String? _currentUserId;
   String _currentUserName = 'Utilisateur';
   bool _isLoading = true;
+  
+  // ✅ NOUVEAU : Pour charger les données une seule fois
+  bool _hasLoadedOnce = false;
 
   @override
   void initState() {
@@ -43,13 +52,28 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     super.dispose();
   }
 
+  // ✅ DIT À FLUTTER DE NE PAS DÉTRUIRE CET ÉCRAN QUAND ON CHANGE D'ONGLET
+  @override
+  bool get wantKeepAlive => true;
+
+  // ✅ PULL-TO-REFRESH : Force le rechargement
+  Future<void> _handleRefresh() async {
+    _hasLoadedOnce = false; // On réinitialise pour forcer le téléchargement
+    await _fetchData();
+  }
+
   Future<void> _fetchData() async {
     try {
+      // ✅ SI DÉJÀ CHARGÉ, ON NE FAIT RIEN (Gain de temps et de données énorme)
+      if (_hasLoadedOnce) {
+        debugPrint('⏭️ Données déjà en mémoire, pas de rechargement');
+        return;
+      }
+
       debugPrint('⏳ [FETCH] Récupération des données...');
       final userId = _currentUserId;
-      
+
       if (userId != null) {
-        // 1. Récupérer le nom de l'utilisateur pour les commentaires
         final userProfile = await Supabase.instance.client
             .from('profiles')
             .select('username, full_name')
@@ -59,7 +83,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
           _currentUserName = userProfile['full_name'] ?? userProfile['username'] ?? 'Utilisateur';
         }
 
-        // 2. Récupérer les follows (gratuit)
         final followsResponse = await Supabase.instance.client
             .from('follows')
             .select('following_id')
@@ -69,7 +92,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
           _followedCreatorIds.add(row['following_id'].toString());
         }
 
-        // 3. ✅ NOUVEAU : Récupérer les abonnements PAYANTS (pour déverrouiller le contenu)
         final subsResponse = await Supabase.instance.client
             .from('subscriptions')
             .select('creator_id')
@@ -81,7 +103,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         }
       }
 
-      // 4. Récupérer tous les posts
       final postsResponse = await Supabase.instance.client
           .from('posts')
           .select('id, user_id, content, media_url, media_type, likes_count, comments_count, created_at')
@@ -90,11 +111,13 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       final posts = List<Map<String, dynamic>>.from(postsResponse);
       if (posts.isEmpty) {
         if (!mounted) return;
-        setState(() { _posts = []; _isLoading = false; });
+        setState(() {
+          _posts = [];
+          _isLoading = false;
+        });
         return;
       }
 
-      // 5. Récupérer les profils des créateurs
       final userIds = posts.map((p) => p['user_id'] as String).toSet().toList();
       final profilesResponse = await Supabase.instance.client
           .from('profiles')
@@ -103,7 +126,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       final profiles = List<Map<String, dynamic>>.from(profilesResponse);
       final profilesMap = {for (var p in profiles) p['id'] as String: p};
 
-      // 6. Récupérer les likes
       if (userId != null) {
         final postIds = posts.map((p) => p['id'] as String).toList();
         final likesResponse = await Supabase.instance.client
@@ -117,7 +139,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         }
       }
 
-      // 7. Fusionner posts + profils
       final finalPosts = posts.map((post) {
         final creatorId = post['user_id'] as String;
         return {...post, 'profiles': profilesMap[creatorId]};
@@ -128,7 +149,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         _posts = finalPosts;
         _isLoading = false;
       });
-    } catch (e, stack) {
+      
+      // ✅ ON MARQUE COMME CHARGÉ POUR LA PROCHAINE FOIS
+      _hasLoadedOnce = true; 
+      
+    } catch (e) {
       debugPrint('❌ [ERROR] Erreur lors du chargement : $e');
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -168,6 +193,22 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     }
   }
 
+  void _handleDoubleTap(String postId, int currentLikes, int postIndex, List<Map<String, dynamic>> postsList) {
+    if (!_likedPostIds.contains(postId)) {
+      _handleLike(postId, currentLikes, postIndex, postsList);
+    }
+    setState(() {
+      _heartAnimations[postId] = true;
+    });
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        setState(() {
+          _heartAnimations[postId] = false;
+        });
+      }
+    });
+  }
+
   Future<void> _handleFollow(String creatorId) async {
     final userId = _currentUserId;
     if (userId == null) return;
@@ -188,18 +229,13 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     }
   }
 
-  // ✅ OUVRIR LE DIALOG DE POURBOIRE
   void _openTipDialog(BuildContext context, String creatorId, String creatorName) {
     showDialog(
       context: context,
-      builder: (context) => TipDialog(
-        creatorId: creatorId,
-        creatorName: creatorName,
-      ),
+      builder: (context) => TipDialog(creatorId: creatorId, creatorName: creatorName),
     );
   }
 
-  // ✅ OUVRIR L'ÉCRAN DE PAIEMENT SI LE CONTENU EST VERROUILLÉ
   void _openSubscriptionPayment(BuildContext context, String creatorId, String creatorName) {
     Navigator.push(
       context,
@@ -207,14 +243,12 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         builder: (context) => SubscriptionPaymentScreen(
           creatorId: creatorId,
           creatorName: creatorName,
-          tierType: 'premium', // Par défaut, on propose l'abonnement standard
-          price: 2000.0, // À adapter selon tes prix réels
+          tierType: 'premium',
+          price: 2000.0,
         ),
       ),
     ).then((success) {
-      if (success == true) {
-        _fetchData(); // Recharger pour déverrouiller le contenu
-      }
+      if (success == true) _fetchData();
     });
   }
 
@@ -234,21 +268,45 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             return Container(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
-                left: 20, right: 20, top: 20,
+                left: 20,
+                right: 20,
+                top: 20,
               ),
               height: MediaQuery.of(context).size.height * 0.7,
               child: Column(
                 children: [
-                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(2))),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade700,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                   const SizedBox(height: 20),
-                  const Text('Commentaires', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Commentaires',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   Expanded(
                     child: FutureBuilder<List<Map<String, dynamic>>>(
-                      future: Supabase.instance.client.from('comments').select().eq('post_id', postId).order('created_at', ascending: true),
+                      future: Supabase.instance.client
+                          .from('comments')
+                          .select()
+                          .eq('post_id', postId)
+                          .order('created_at', ascending: true),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                          return const Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.primary,
+                            ),
+                          );
                         }
                         final comments = snapshot.data ?? [];
                         if (comments.isEmpty) {
@@ -256,9 +314,20 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey),
+                                Icon(
+                                  Icons.chat_bubble_outline,
+                                  size: 60,
+                                  color: Colors.grey,
+                                ),
                                 SizedBox(height: 16),
-                                Text('Aucun commentaire', style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.w500)),
+                                Text(
+                                  'Aucun commentaire',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                               ],
                             ),
                           );
@@ -270,13 +339,30 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                             return Container(
                               margin: const EdgeInsets.only(bottom: 16),
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1A1A1A),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(comment['user_name'] ?? 'Utilisateur', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  Text(
+                                    comment['user_name'] ?? 'Utilisateur',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
                                   const SizedBox(height: 6),
-                                  Text(comment['content'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4)),
+                                  Text(
+                                    comment['content'] ?? '',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      height: 1.4,
+                                    ),
+                                  ),
                                 ],
                               ),
                             );
@@ -287,40 +373,73 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.grey.shade800)),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.grey.shade800),
+                    ),
                     child: Row(
                       children: [
                         Expanded(
                           child: TextField(
                             controller: commentController,
                             style: const TextStyle(color: Colors.white, fontSize: 14),
-                            decoration: const InputDecoration(hintText: 'Ajouter un commentaire...', hintStyle: TextStyle(color: Colors.grey), border: InputBorder.none),
+                            decoration: const InputDecoration(
+                              hintText: 'Ajouter un commentaire...',
+                              hintStyle: TextStyle(color: Colors.white54),
+                              border: InputBorder.none,
+                              filled: true,
+                              fillColor: Colors.black,
+                              contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                            ),
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.send, color: AppColors.primary, size: 24),
+                          icon: const Icon(Icons.send, color: AppColors.primary),
                           onPressed: () async {
-                            final text = commentController.text.trim();
-                            if (text.isEmpty) return;
-                            commentController.clear();
+                            final content = commentController.text.trim();
+                            if (content.isEmpty) return;
 
                             try {
                               await Supabase.instance.client.from('comments').insert({
                                 'post_id': postId,
-                                'content': text,
-                                'user_name': _currentUserName, // ✅ CORRECTION : Utilise le vrai nom de l'utilisateur
+                                'user_id': _currentUserId,
+                                'user_name': _currentUserName,
+                                'content': content,
                               });
 
-                              final int totalComments = await Supabase.instance.client.from('comments').count(CountOption.exact).eq('post_id', postId);
-                              await Supabase.instance.client.from('posts').update({'comments_count': totalComments}).eq('id', postId);
+                              final post = _posts.firstWhere(
+                                (p) => p['id'].toString() == postId,
+                                orElse: () => {},
+                              );
+                              if (post.isNotEmpty) {
+                                final newCount = (post['comments_count'] ?? 0) + 1;
+                                await Supabase.instance.client
+                                    .from('posts')
+                                    .update({'comments_count': newCount})
+                                    .eq('id', postId);
 
+                                setState(() {
+                                  final index = _posts.indexWhere(
+                                    (p) => p['id'].toString() == postId,
+                                  );
+                                  if (index != -1) {
+                                    _posts[index]['comments_count'] = newCount;
+                                  }
+                                });
+                              }
+
+                              commentController.clear();
                               setModalState(() {});
-                              setState(() {
-                                final postIndex = _posts.indexWhere((p) => p['id'].toString() == postId);
-                                if (postIndex != -1) _posts[postIndex]['comments_count'] = totalComments;
-                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Commentaire ajouté'),
+                                  backgroundColor: Colors.green,
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
                             } catch (e) {
-                              debugPrint('❌ [ERROR] Erreur commentaire : $e');
+                              debugPrint('❌ Erreur lors de l\'ajout du commentaire : $e');
                             }
                           },
                         ),
@@ -339,15 +458,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   void _handleShare(Map<String, dynamic> post) {
     final creatorName = post['profiles']?['full_name'] ?? 'Créateur';
     final caption = post['content'] ?? '';
-    final postId = post['id'].toString();
-    // shareService.shareFreePost(postId: postId, creatorName: creatorName, caption: caption, imageUrl: post['media_url']);
+    Share.share('Regarde ce post de $creatorName sur Afrifan : $caption');
   }
-  // ✅ NOUVEAU : Méthode pour rejoindre un Live dynamiquement
-    // ✅ NOUVEAU : Méthode pour rejoindre un Live dynamiquement (CORRIGÉE)
-  // ✅ NOUVEAU : Méthode pour rejoindre un Live dynamiquement (BLINDÉE CONTRE LES DOUBLONS)
+
   Future<void> _joinLive() async {
     try {
-      // 1. Chercher s'il y a au moins un live en cours
       final lives = await Supabase.instance.client
           .from('live_streams')
           .select('id, creator_id, title')
@@ -357,9 +472,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       if (lives.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('🔴 Aucun live en cours pour le moment. Reviens plus tard !'),
-            backgroundColor: const Color(0xFF424242),
+          const SnackBar(
+            content: Text('🔴 Aucun live en cours pour le moment.'),
+            backgroundColor: Color(0xFF424242),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -369,20 +484,18 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       final live = lives[0];
       final creatorId = live['creator_id'] as String;
 
-      // 2. Récupérer le profil (Sécurisé : on prend juste le premier si doublon)
       final profiles = await Supabase.instance.client
           .from('profiles')
           .select('username, full_name, avatar_url')
           .eq('id', creatorId)
           .limit(1);
-      
+
       final profile = profiles.isNotEmpty ? profiles[0] : null;
-      final creatorName = profile != null 
-          ? (profile['full_name'] ?? profile['username'] ?? 'Créateur') 
+      final creatorName = profile != null
+          ? (profile['full_name'] ?? profile['username'] ?? 'Créateur')
           : 'Créateur';
       final creatorAvatar = profile != null ? profile['avatar_url'] : null;
 
-      // 3. Vérifier l'abonnement (Sécurisé : on prend juste le premier si doublon)
       bool isSubscribed = false;
       if (_currentUserId != null) {
         final subs = await Supabase.instance.client
@@ -392,11 +505,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             .eq('creator_id', creatorId)
             .eq('status', 'active')
             .limit(1);
-        
         isSubscribed = subs.isNotEmpty;
       }
 
-      // 4. Ouvrir l'écran du Live
       if (!mounted) return;
       Navigator.push(
         context,
@@ -411,22 +522,25 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       );
     } catch (e) {
       debugPrint('❌ Erreur lors de la recherche de live : $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erreur de connexion au live'), backgroundColor: Colors.red),
-      );
     }
   }
+
   Widget _buildPostsPageView(List<Map<String, dynamic>> postsList) {
     if (postsList.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.video_collection_outlined, size: 60, color: Colors.white54),
+            const Icon(
+              Icons.video_collection_outlined,
+              size: 60,
+              color: Colors.white54,
+            ),
             const SizedBox(height: 12),
             Text(
-              _selectedTab == 0 ? 'Aucune publication de vos abonnements' : 'Aucune publication pour le moment',
+              _selectedTab == 0
+                  ? 'Aucune publication de vos abonnements'
+                  : 'Aucune publication pour le moment',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white54, fontSize: 14),
             ),
@@ -450,192 +564,336 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
         final bool isLiked = _likedPostIds.contains(postId);
         final bool isFollowed = _followedCreatorIds.contains(creatorId);
-
-        // ✅ LOGIQUE DE VERROUILLAGE (Exactement comme dans creator_profile_screen)
         final bool isMyOwnPost = (_currentUserId == creatorId);
-        // Verrouillé si ce n'est pas mon post ET que je ne suis pas abonné (payant) à ce créateur
         final bool isLocked = !isMyOwnPost && !_subscribedCreatorIds.contains(creatorId);
+        final bool showHeart = _heartAnimations[postId] == true;
 
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            // 🖼️ IMAGE DE FOND (Avec flou si verrouillé)
-            if (mediaUrl != null && mediaUrl.toString().isNotEmpty)
-              isLocked
-                  ? ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                      child: Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54))),
-                    )
-                  : Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54)))
-            else
-              Container(color: Colors.grey.shade900, child: const Center(child: Icon(Icons.image_not_supported, size: 50, color: Colors.white54))),
+        return GestureDetector(
+          onDoubleTap: () => _handleDoubleTap(
+            postId,
+            int.tryParse(likesCount) ?? 0,
+            index,
+            postsList,
+          ),
+          behavior: HitTestBehavior.translucent,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (mediaUrl != null && mediaUrl.toString().isNotEmpty)
+                isLocked
+                    ? ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                        child: Image.network(
+                          mediaUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Center(
+                            child: Icon(Icons.broken_image, color: Colors.white54),
+                          ),
+                        ),
+                      )
+                    : Image.network(
+                        mediaUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Icon(Icons.broken_image, color: Colors.white54),
+                        ),
+                      )
+              else
+                Container(
+                  color: Colors.grey.shade900,
+                  child: const Center(
+                    child: Icon(Icons.image_not_supported, size: 50, color: Colors.white54),
+                  ),
+                ),
 
-            // 🌫️ DÉGRADÉ POUR LA LISIBILITÉ
-                        // 🌫️ DÉGRADÉ POUR LA LISIBILITÉ
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.black.withOpacity(0.4), Colors.transparent, Colors.black.withOpacity(0.8)],
+              if (showHeart)
+                const Center(
+                  child: Icon(Icons.favorite, color: Colors.redAccent, size: 100),
+                ),
+
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.3),
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.8),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            // ⋮ MENU 3 POINTS (En haut à droite du post)
-            Positioned(
-              top: 16,
-              right: 16,
-              child: PopupMenuButton<String>(
-                color: const Color(0xFF1A1A1A), // Fond sombre du menu
-                icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
-                onSelected: (value) {
-                  if (value == 'report') {
-                    showDialog(
-                      context: context,
-                      builder: (context) => ReportDialog(
-                        targetId: postId,
-                        targetType: 'post',
+              if (isLocked)
+                GestureDetector(
+                  onTap: () => _openSubscriptionPayment(context, creatorId, creatorName),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.6),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: const BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.visibility_off,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Contenu réservé aux abonnés',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Cliquez ici pour vous abonner',
+                            style: TextStyle(color: Colors.white70, fontSize: 14),
+                          ),
+                        ],
                       ),
-                    );
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem<String>(
-                    value: 'report',
-                    child: Row(
-                      children: [
-                        Icon(Icons.flag_outlined, color: Colors.redAccent, size: 20),
-                        SizedBox(width: 12),
-                        Text('Signaler ce post', style: TextStyle(color: Colors.white)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // 👁️ OVERLAY DE VERROUILLAGE (Si isLocked est true)
-            if (isLocked)
-              // ... (le reste de ton code ne change pas)
-
-            // 👁️ OVERLAY DE VERROUILLAGE (Si isLocked est true)
-            if (isLocked)
-              GestureDetector(
-                onTap: () => _openSubscriptionPayment(context, creatorId, creatorName),
-                child: Container(
-                  color: Colors.black.withOpacity(0.6),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                          child: const Icon(Icons.visibility_off, color: Colors.white, size: 32), // Œil barré
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Contenu réservé aux abonnés',
-                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Cliquez ici pour vous abonner',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                      ],
                     ),
                   ),
                 ),
-              ),
 
-            // 👤 BLOC GAUCHE : CRÉATEUR + LÉGENDE
-            Positioned(
-              left: 16, right: 80, bottom: 100,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => CreatorProfileScreen(creatorId: creatorId))),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 18, backgroundColor: Colors.grey.shade800,
-                          backgroundImage: post['profiles']?['avatar_url'] != null ? NetworkImage(post['profiles']!['avatar_url']) : null,
-                          child: post['profiles']?['avatar_url'] == null ? const Icon(Icons.person, color: Colors.white, size: 18) : null,
+              Positioned(
+                left: 16,
+                right: 80,
+                bottom: 20,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CreatorProfileScreen(creatorId: creatorId),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(creatorName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ),
-                        if (!isFollowed)
-                          GestureDetector(
-                            onTap: () => _handleFollow(creatorId),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                              decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(20)),
-                              child: const Text('Suivre', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Colors.grey.shade800,
+                            backgroundImage: post['profiles']?['avatar_url'] != null
+                                ? NetworkImage(post['profiles']!['avatar_url'])
+                                : null,
+                            child: post['profiles']?['avatar_url'] == null
+                                ? const Icon(Icons.person, color: Colors.white, size: 20)
+                                : null,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              creatorName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                      ],
+                          if (!isFollowed)
+                            GestureDetector(
+                              onTap: () => _handleFollow(creatorId),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  'Suivre',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 100),
-                    child: Text(
-                      caption.isEmpty ? '📝 (Pas de légende)' : caption,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14, height: 1.4, shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))]),
-                      maxLines: 3, overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // 🎯 BLOC DROITE : BOUTONS D'ACTION
-            Positioned(
-              right: 12, bottom: 100,
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: () => _handleFollow(creatorId),
-                    child: Stack(
-                      alignment: Alignment.bottomCenter,
-                      children: [
-                        CircleAvatar(
-                          radius: 22, backgroundColor: Colors.grey.shade800,
-                          backgroundImage: post['profiles']?['avatar_url'] != null ? NetworkImage(post['profiles']!['avatar_url']) : null,
-                          child: post['profiles']?['avatar_url'] == null ? const Icon(Icons.person, color: Colors.white) : null,
+                    const SizedBox(height: 10),
+                                        // ✅ BLOC LÉGENDE AVEC "VOIR PLUS"
+                    GestureDetector(
+                      onTap: () {
+                        // Ouvre l'écran de détail complet
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PostDetailScreen(post: post),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        constraints: const BoxConstraints(maxHeight: 100),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              caption.isEmpty ? '📝 (Pas de légende)' : caption,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
+                                height: 1.4,
+                                shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
+                              ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            // ✅ AFFICHE "VOIR PLUS" SI LE TEXTE EST LONG
+                            if (caption.length > 100)
+                              const Text(
+                                '... Voir plus',
+                                style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                          ],
                         ),
-                        if (!isFollowed)
-                          Positioned(
-                            bottom: -4,
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                              child: const Icon(Icons.add, size: 14, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Positioned(
+                right: 12,
+                bottom: 20,
+                child: Column(
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CreatorProfileScreen(creatorId: creatorId),
+                        ),
+                      ),
+                      child: Stack(
+                        alignment: Alignment.bottomCenter,
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundColor: Colors.grey.shade800,
+                            backgroundImage: post['profiles']?['avatar_url'] != null
+                                ? NetworkImage(post['profiles']!['avatar_url'])
+                                : null,
+                            child: post['profiles']?['avatar_url'] == null
+                                ? const Icon(Icons.person, color: Colors.white, size: 24)
+                                : null,
+                          ),
+                          if (!isFollowed)
+                            Positioned(
+                              bottom: -4,
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.add,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    _buildSideButton(
+                      isLiked ? Icons.favorite : Icons.favorite_border,
+                      likesCount,
+                      () => _handleLike(
+                        postId,
+                        int.tryParse(likesCount) ?? 0,
+                        index,
+                        postsList,
+                      ),
+                      iconColor: isLiked ? Colors.redAccent : Colors.white,
+                    ),
+                    const SizedBox(height: 20),
+                    _buildSideButton(
+                      Icons.chat_bubble_rounded,
+                      commentsCount,
+                      () => _openComments(context, postId),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildSideButton(
+                      Icons.local_cafe,
+                      '',
+                      () => _openTipDialog(context, creatorId, creatorName),
+                      iconColor: Colors.orangeAccent,
+                    ),
+                    const SizedBox(height: 20),
+                    _buildSideButton(
+                      Icons.share,
+                      '',
+                      () => _handleShare(post),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildSideButton(
+                      Icons.more_vert,
+                      '',
+                      () {
+                        showModalBottomSheet(
+                          context: context,
+                          backgroundColor: const Color(0xFF1A1A1A),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(16),
                             ),
                           ),
-                      ],
+                          builder: (context) => Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                leading: const Icon(
+                                  Icons.flag_outlined,
+                                  color: Colors.redAccent,
+                                ),
+                                title: const Text(
+                                  'Signaler ce post',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => ReportDialog(
+                                      targetId: postId,
+                                      targetType: 'post',
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  _buildSideButton(isLiked ? Icons.favorite : Icons.favorite_border, likesCount, () => _handleLike(postId, int.tryParse(likesCount) ?? 0, index, postsList), iconColor: isLiked ? Colors.redAccent : Colors.white),
-                  const SizedBox(height: 18),
-                  _buildSideButton(Icons.chat_bubble_rounded, commentsCount, () => _openComments(context, postId)),
-                  const SizedBox(height: 18),
-                  
-                  // ✅ NOUVEAU : BOUTON POURBOIRE (TIP)
-                  _buildSideButton(Icons.local_cafe, '', () => _openTipDialog(context, creatorId, creatorName), iconColor: Colors.orangeAccent),
-                  
-                  const SizedBox(height: 18),
-                  _buildSideButton(Icons.share, '', () => _handleShare(post)),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -643,6 +901,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ OBLIGATOIRE QUAND ON UTILISE AutomaticKeepAliveClientMixin
+    super.build(context); 
+    
     final followedPosts = _posts.where((post) {
       final creatorId = post['user_id']?.toString() ?? '';
       return _followedCreatorIds.contains(creatorId);
@@ -654,42 +915,51 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
           ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : Stack(
               children: [
-                PageView(
-                  controller: _horizontalPageController,
-                  onPageChanged: (index) {
-                    setState(() { _selectedTab = index; });
-                  },
-                  children: [
-                    _buildPostsPageView(followedPosts), // Page 0 : Abonnés (Follows)
-                    _buildPostsPageView(_posts),        // Page 1 : Pour toi (Tous les posts)
-                  ],
+                RefreshIndicator(
+                  onRefresh: _handleRefresh,
+                  color: AppColors.primary,
+                  child: PageView(
+                    controller: _horizontalPageController,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _selectedTab = index;
+                      });
+                    },
+                    children: [
+                      _buildPostsPageView(followedPosts),
+                      _buildPostsPageView(_posts),
+                    ],
+                  ),
                 ),
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 10,
-                  left: 16, right: 16,
+                  left: 16,
+                  right: 16,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-// ✅ BOUTON LIVE (Remplace le panier)
-// ✅ BOUTON LIVE DYNAMIQUE
-GestureDetector(
-  onTap: _joinLive, // <-- Appelle directement la méthode qu'on vient de créer
-  child: const Row(
-    children: [
-      Icon(Icons.videocam, color: Colors.redAccent, size: 28),
-      SizedBox(width: 6),
-      Text(
-        'LIVE',
-        style: TextStyle(
-          color: Colors.redAccent, 
-          fontWeight: FontWeight.bold, 
-          fontSize: 14,
-          letterSpacing: 1.2,
-        ),
-      ),
-    ],
-  ),
-),                     Row(
+                      GestureDetector(
+                        onTap: _joinLive,
+                        child: const Row(
+                          children: [
+                            Icon(
+                              Icons.videocam,
+                              color: Colors.redAccent,
+                              size: 24,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'LIVE',
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Row(
                         children: [
                           _buildTopTab('Abonnés', 0),
                           const SizedBox(width: 20),
@@ -699,13 +969,31 @@ GestureDetector(
                       Row(
                         children: [
                           GestureDetector(
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ExploreScreen())),
-                            child: const Icon(Icons.search, color: Colors.white, size: 26),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ExploreScreen(),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.search,
+                              color: Colors.white,
+                              size: 26,
+                            ),
                           ),
                           const SizedBox(width: 16),
                           GestureDetector(
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen())),
-                            child: const Icon(Icons.notifications_none, color: Colors.white, size: 26),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const NotificationsScreen(),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.notifications_none,
+                              color: Colors.white,
+                              size: 26,
+                            ),
                           ),
                         ],
                       ),
@@ -721,20 +1009,44 @@ GestureDetector(
     bool isSelected = _selectedTab == index;
     return GestureDetector(
       onTap: () {
-        _horizontalPageController.animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+        _horizontalPageController.animateToPage(
+          index,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
       },
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(title, style: TextStyle(color: isSelected ? Colors.white : Colors.white60, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 16)),
+          Text(
+            title,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.white60,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              fontSize: 16,
+            ),
+          ),
           const SizedBox(height: 4),
-          if (isSelected) Container(height: 3, width: 24, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(2))),
+          if (isSelected)
+            Container(
+              height: 3,
+              width: 24,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildSideButton(IconData icon, String label, VoidCallback onTap, {Color iconColor = Colors.white}) {
+  Widget _buildSideButton(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    Color iconColor = Colors.white,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
@@ -744,7 +1056,14 @@ GestureDetector(
             Icon(icon, color: iconColor, size: 32),
             if (label.isNotEmpty) ...[
               const SizedBox(height: 4),
-              Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ],
         ),

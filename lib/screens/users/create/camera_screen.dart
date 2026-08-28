@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
 import 'post_selection_screen.dart';
 import 'ai_creation_screen.dart'; // ✅ IMPORT DE L'ÉCRAN IA
-
+import 'package:audioplayers/audioplayers.dart';
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -26,7 +26,16 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   int _recordingSeconds = 0;
 
   final ImagePicker _imagePicker = ImagePicker();
-
+  // ✅ Liste des sons disponibles (Option A : Liste en dur)
+  
+  final List<Map<String, String>> _availableSounds = [
+  {'title': 'Amapiano Vibes', 'artist': 'DJ Maphorisa', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},    {'title': 'Afrobeat Fire', 'artist': 'Burna Boy', 'url': 'https://example.com/sound2.mp3'},
+    {'title': 'Coupé Décalé', 'artist': 'DJ Arafat', 'url': 'https://example.com/sound3.mp3'},
+    {'title': 'Afro Trap', 'artist': 'MHD', 'url': 'https://example.com/sound4.mp3'},
+    {'title': 'Gqom Beat', 'artist': 'Babes Wodumo', 'url': 'https://example.com/sound5.mp3'},
+  ];
+    final AudioPlayer _audioPlayer = AudioPlayer();
+    Map<String, String>? _selectedSound; // ✅ Pour stocker le son choisi
   @override
   void initState() {
     super.initState();
@@ -69,7 +78,133 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       MaterialPageRoute(builder: (context) => const AICreationScreen()),
     );
   }
-
+    // ✅ OUVRIR LA GALERIE DU TÉLÉPHONE (Photo ou Vidéo)
+  // ✅ OUVRIR LA GALERIE DU TÉLÉPHONE (Photo ou Vidéo)
+  Future<void> _openGallery() async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey.shade900,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 20),
+            
+            // Choisir une Photo
+            ListTile(
+              leading: const Icon(Icons.photo, color: Color(0xFF8B5CF6)),
+              title: const Text('Photo de la galerie', style: TextStyle(color: Colors.white, fontSize: 16)),
+              onTap: () async {
+                Navigator.pop(context);
+                final file = await _imagePicker.pickImage(source: ImageSource.gallery);
+                if (file != null && mounted) {
+                  final path = file.path ?? 'web_image_${DateTime.now().millisecondsSinceEpoch}';
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(
+                      builder: (context) => PostSelectionScreen(
+                        mediaPath: path, 
+                        mediaType: 'photo', 
+                        xFile: file, // ✅ Virgule ajoutée ici
+                        selectedSound: _selectedSound,
+                      )
+                    )
+                  );
+                }
+              },
+            ),
+            
+            // Choisir une Vidéo
+            ListTile(
+              leading: const Icon(Icons.video_library, color: Color(0xFF8B5CF6)),
+              title: const Text('Vidéo de la galerie', style: TextStyle(color: Colors.white, fontSize: 16)),
+              onTap: () async {
+                Navigator.pop(context);
+                final file = await _imagePicker.pickVideo(source: ImageSource.gallery);
+                if (file != null && mounted) {
+                  final path = file.path ?? 'web_video_${DateTime.now().millisecondsSinceEpoch}';
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(
+                      builder: (context) => PostSelectionScreen(
+                        mediaPath: path, 
+                        mediaType: 'video', 
+                        xFile: file, // ✅ Virgule ajoutée ici
+                        selectedSound: _selectedSound,
+                      )
+                    )
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+  // ✅ AFFICHER LA LISTE DES SONS
+  void _showMusicSelectionSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey.shade900,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade700,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '🎵 Choisir un son',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              
+              // ✅ AFFICHAGE DE LA LISTE QU'ON A CRÉÉE À L'ÉTAPE 1
+...(_availableSounds ?? []).map((sound) {                return ListTile(
+                  leading: const Icon(Icons.music_note, color: Color(0xFF8B5CF6)),
+                  title: Text(sound['title']!, style: const TextStyle(color: Colors.white)),
+                  subtitle: Text(sound['artist']!, style: const TextStyle(color: Colors.grey)),
+                                    onTap: () async {
+                    // 1. On arrête le son précédent s'il y en a un
+                    await _audioPlayer.stop();
+                    
+                    // 2. On lance le nouveau son
+                    await _audioPlayer.play(UrlSource(sound['url']!));
+                    
+                    // 3. On ferme la fenêtre
+                    setState(() => _selectedSound = sound); // ✅ Sauvegarde le son choisi
+                    Navigator.pop(context); 
+                    
+                    // 4. Petit message de confirmation
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('🎵 Lecture de : ${sound['title']}')),
+                    );
+                  },
+                );
+              }).toList(),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
   // ✅ SIMULER LA CAPTURE SUR WEB (Ouvre la galerie du PC)
   Future<void> _simulateCaptureWeb(String type) async {
     try {
@@ -146,6 +281,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               mediaPath: photo.path,
               mediaType: 'photo',
               xFile: photo,
+              selectedSound: _selectedSound, // ✅ AJOUTE CETTE LIGNE
+
             ),
           ),
         );
@@ -183,6 +320,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             builder: (context) => PostSelectionScreen(
               mediaPath: video.path,
               mediaType: 'video',
+              selectedSound: _selectedSound, // ✅ AJOUTE CETTE LIGNE ICI
+
               xFile: video,
             ),
           ),
@@ -209,6 +348,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   void dispose() {
     _controller?.dispose();
     _recordingTimer?.cancel();
+    _audioPlayer.dispose(); // ✅ AJOUTE CETTE LIGNE
+
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -266,20 +407,29 @@ colors: const [
                 children: [
                   _buildToolButton(icon: Icons.flash_off, onTap: () {}),
                   const SizedBox(height: 16),
-                  _buildToolButton(icon: Icons.music_note_outlined, onTap: () {}),
-                  const SizedBox(height: 16),
+_buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionSheet),                  const SizedBox(height: 16),
                   _buildToolButton(icon: Icons.grid_off, onTap: () {}),
                 ],
               ),
             ),
             // Contrôles en bas
+                      // Contrôles en bas (Galerie + IA + Capture + Flip)
             Positioned(
               left: 0, right: 0, bottom: 30,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // ✅ BOUTON IA (Fonctionnel sur Web !)
+                  // ✅ 1. NOUVEAU BOUTON GALERIE (Tout à gauche)
+                  GestureDetector(
+                    onTap: _openGallery,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.grey.shade900.withOpacity(0.8), borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.photo_library, color: Colors.white, size: 28),
+                    ),
+                  ),
+                  // ✅ 2. BOUTON IA
                   GestureDetector(
                     onTap: _openAIScreen,
                     child: Container(
@@ -295,6 +445,8 @@ colors: const [
                       ),
                     ),
                   ),
+                  // ✅ 3. BOUTON CAPTURE (Centre)
+                  // ... (Laisse le reste de ton code pour le bouton capture et flip ici) ...
                   // Bouton capture (simulé)
                   GestureDetector(
                     onTap: () => _simulateCaptureWeb('photo'),
@@ -347,14 +499,49 @@ colors: const [
               children: [
                 _buildToolButton(icon: _flashMode == FlashMode.always ? Icons.flash_on : Icons.flash_off, onTap: _toggleFlash),
                 const SizedBox(height: 16),
-                _buildToolButton(icon: Icons.music_note_outlined, onTap: () {}),
-                const SizedBox(height: 16),
+_buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionSheet),                const SizedBox(height: 16),
                 _buildToolButton(icon: _showGrid ? Icons.grid_on : Icons.grid_off, onTap: _toggleGrid),
               ],
             ),
           ),
+                          // ✅ AFFICHER LE SON SÉLECTIONNÉ
+                if (_selectedSound != null) ...[
+                  Positioned(
+                    bottom: 110,
+                    left: 16,
+                    right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade900.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.music_note, color: Color(0xFF8B5CF6), size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _selectedSound!['title']!,
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() => _selectedSound = null);
+                              _audioPlayer.stop();
+                            },
+                            child: const Icon(Icons.close, color: Colors.white54, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
           Positioned(
             left: 0, right: 0, bottom: 30,
+            
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               crossAxisAlignment: CrossAxisAlignment.center,

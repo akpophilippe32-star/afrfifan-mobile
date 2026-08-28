@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+// ✅ AJOUTE CET IMPORT (ajuste le chemin '../' si ton dossier profile_screen.dart est ailleurs)
+import '../main/main_screen.dart';
 
 class ConfirmationScreen extends StatefulWidget {
-  // ✅ On reçoit TOUTES les données collectées lors des 3 étapes
   final String userId;
   final String fullName;
   final String? birthDate;
@@ -46,7 +47,6 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ L'envoi à la base de données se fait automatiquement à l'ouverture de l'écran
     _submitApplication();
   }
 
@@ -54,14 +54,13 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     try {
       debugPrint('📤 Envoi final de la demande créateur à Supabase...');
 
-      // ✅ L'UNIQUE INSERT de tout le processus
       await Supabase.instance.client.from('creator_applications').insert({
         'user_id': widget.userId,
         'full_name': widget.fullName,
         'birth_date': widget.birthDate,
         'city': widget.city,
         'category': widget.category,
-        'id_card_url': widget.idCardUrl, // Note: En prod, ce sera l'URL du Storage, pas le chemin local
+        'id_card_url': widget.idCardUrl,
         'phone_verified': widget.phoneVerified,
         'premium_price': widget.premiumPrice,
         'pro_price': widget.proPrice,
@@ -94,8 +93,9 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ CORRECTION : On bloque le retour SEULEMENT pendant le chargement
     return WillPopScope(
-      onWillPop: () async => false, // Empêche le retour arrière pendant le chargement
+      onWillPop: () async => _isLoading, 
       child: Scaffold(
         backgroundColor: const Color(0xFF0A0A0A),
         body: SafeArea(
@@ -152,7 +152,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
             width: double.infinity,
             height: 55,
             child: ElevatedButton(
-              onPressed: _submitApplication, // Permet de réessayer
+              onPressed: _submitApplication,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF8B5CF6),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -164,7 +164,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
       );
     }
 
-    // ✅ ÉCRAN DE SUCCÈS (Design harmonisé en Violet)
+    // ✅ ÉCRAN DE SUCCÈS
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -216,7 +216,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.hourglass_empty, color: Color(0xFF8B5CF6), size: 24), // ✅ VIOLET
+              const Icon(Icons.hourglass_empty, color: Color(0xFF8B5CF6), size: 24),
               const SizedBox(width: 10),
               const Text(
                 'En cours de vérification',
@@ -227,9 +227,9 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           const SizedBox(height: 16),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              backgroundColor: const Color(0xFF2A2A2A),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)), // ✅ VIOLET
+            child: const LinearProgressIndicator(
+              backgroundColor: Color(0xFF2A2A2A),
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)),
               minHeight: 6,
             ),
           ),
@@ -238,6 +238,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     );
   }
 
+  // ✅ MODIFICATION ICI : Bouton unique qui ramène au profil
   Widget _buildActionButtons(BuildContext context) {
     return Column(
       children: [
@@ -246,11 +247,15 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           height: 55,
           child: ElevatedButton(
             onPressed: () {
-              // Retour à l'écran racine (profil ou accueil)
-              Navigator.of(context).popUntil((route) => route.isFirst);
+              // ✅ Vide la pile de navigation et affiche directement le Profil
+            Navigator.pushAndRemoveUntil(
+  context,
+  MaterialPageRoute(builder: (context) => const MainScreen()), // ✅ Retourne à l'écran principal
+  (route) => false,
+);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6), // ✅ VIOLET
+              backgroundColor: const Color(0xFF8B5CF6),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               elevation: 0,
             ),
@@ -260,24 +265,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          height: 55,
-          child: OutlinedButton(
-            onPressed: () {
-              debugPrint('ℹ️ Navigation vers l\'historique (à implémenter plus tard).');
-            },
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color(0xFF8B5CF6), width: 2), // ✅ VIOLET
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-            child: const Text(
-              'Voir l\'historique',
-              style: TextStyle(color: Color(0xFF8B5CF6), fontSize: 16, fontWeight: FontWeight.bold), // ✅ VIOLET
-            ),
-          ),
-        ),
+        // ✅ Le bouton "Voir l'historique" a été complètement supprimé ici
       ],
     );
   }

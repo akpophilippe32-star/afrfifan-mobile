@@ -82,12 +82,13 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   }
 
   // ✅ FONCTION POUR OUVRIR LA GALERIE (PHOTO OU VIDÉO)
+    // ✅ FONCTION POUR OUVRIR LA GALERIE (PHOTO OU VIDÉO) - VERSION CORRIGÉE
   Future<void> _openGallery() async {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey.shade900,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => SafeArea(
+      builder: (bottomSheetContext) => SafeArea( // <-- On nomme ce contexte spécifiquement
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -95,50 +96,82 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 20),
             
-            // Choisir une Photo
+            // 1. Choisir une Photo
             ListTile(
               leading: const Icon(Icons.photo, color: Color(0xFF8B5CF6)),
               title: const Text('Photo de la galerie', style: TextStyle(color: Colors.white, fontSize: 16)),
               onTap: () async {
-                Navigator.pop(context);
+                debugPrint('📸 [GALERIE] Ouverture du sélecteur de photo...');
                 final file = await _imagePicker.pickImage(source: ImageSource.gallery);
-                if (file != null && mounted) {
-                  final path = file.path ?? 'web_image_${DateTime.now().millisecondsSinceEpoch}';
-                  Navigator.push(
-                    context, 
-                    MaterialPageRoute(
-                      builder: (context) => PostSelectionScreen(
-                        mediaPath: path, 
-                        mediaType: 'photo', 
-                        xFile: file,
-                        selectedSound: _selectedSound,
-                      )
-                    )
-                  );
+                
+                if (file != null) {
+                  debugPrint('✅ [GALERIE] Photo sélectionnée avec succès: ${file.path}');
+                  
+                  // ÉTAPE A : On ferme le menu en utilisant SON propre contexte
+                  Navigator.pop(bottomSheetContext); 
+                  
+                  // ÉTAPE B : On attend 100ms que la fermeture soit prise en compte
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    if (mounted) { // 'mounted' vérifie que CameraScreen est toujours actif
+                      debugPrint('🚀 [GALERIE] Navigation vers PostSelectionScreen...');
+                      
+                      // ÉTAPE C : On navigue en utilisant le contexte PARENT (celui de CameraScreen)
+                      Navigator.push(
+                        context, 
+                        MaterialPageRoute(
+                          builder: (context) => PostSelectionScreen(
+                            mediaPath: file.path ?? 'web_image_${DateTime.now().millisecondsSinceEpoch}', 
+                            mediaType: 'photo', 
+                            xFile: file,
+                            selectedSound: _selectedSound,
+                          )
+                        )
+                      );
+                    }
+                  });
+                } else {
+                  debugPrint('⚠️ [GALERIE] Sélection de photo annulée par l\'utilisateur.');
                 }
               },
             ),
             
-            // Choisir une Vidéo
+            const SizedBox(height: 10),
+            
+            // 2. Choisir une Vidéo
             ListTile(
               leading: const Icon(Icons.video_library, color: Color(0xFF8B5CF6)),
               title: const Text('Vidéo de la galerie', style: TextStyle(color: Colors.white, fontSize: 16)),
               onTap: () async {
-                Navigator.pop(context);
+                debugPrint('🎥 [GALERIE] Ouverture du sélecteur de vidéo...');
                 final file = await _imagePicker.pickVideo(source: ImageSource.gallery);
-                if (file != null && mounted) {
-                  final path = file.path ?? 'web_video_${DateTime.now().millisecondsSinceEpoch}';
-                  Navigator.push(
-                    context, 
-                    MaterialPageRoute(
-                      builder: (context) => PostSelectionScreen(
-                        mediaPath: path, 
-                        mediaType: 'video', 
-                        xFile: file,
-                        selectedSound: _selectedSound,
-                      )
-                    )
-                  );
+                
+                if (file != null) {
+                  debugPrint('✅ [GALERIE] Vidéo sélectionnée avec succès: ${file.path}');
+                  
+                  // ÉTAPE A : On ferme le menu
+                  Navigator.pop(bottomSheetContext); 
+                  
+                  // ÉTAPE B : Petit délai de sécurité
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    if (mounted) {
+                      debugPrint('🚀 [GALERIE] Navigation vers PostSelectionScreen...');
+                      
+                      // ÉTAPE C : Navigation avec le contexte parent
+                      Navigator.push(
+                        context, 
+                        MaterialPageRoute(
+                          builder: (context) => PostSelectionScreen(
+                            mediaPath: file.path ?? 'web_video_${DateTime.now().millisecondsSinceEpoch}', 
+                            mediaType: 'video', 
+                            xFile: file,
+                            selectedSound: _selectedSound,
+                          )
+                        )
+                      );
+                    }
+                  });
+                } else {
+                  debugPrint('⚠️ [GALERIE] Sélection de vidéo annulée par l\'utilisateur.');
                 }
               },
             ),

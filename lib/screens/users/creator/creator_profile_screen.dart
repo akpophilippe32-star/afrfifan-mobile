@@ -9,7 +9,12 @@ import 'post_detail_screen.dart';
 import 'subscription_payment_screen.dart';
 import '../../../widgets/tip_dialog.dart';
 import '../../../widgets/report_dialog.dart';
-import '../profile/view_story_screen.dart'; // ✅ Décommente cette ligne
+import '../profile/view_story_screen.dart'; 
+
+// ✅ 1. AJOUT DE L'IMPORT VERS TON ÉCRAN DE PROFIL PRINCIPAL
+// ⚠️ Vérifie que le chemin correspond bien à ton arborescence (ex: ../profile/profile_screen.dart)
+import '../profile/profile_screen.dart'; 
+
 class CreatorProfileScreen extends StatefulWidget {
   final String creatorId;
 
@@ -53,7 +58,30 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCreatorData();
+    // ✅ 2. VÉRIFICATION IMMÉDIATE AVANT DE CHARGER QUOI QUE CE SOIT
+    // On utilise addPostFrameCallback pour éviter les erreurs de navigation pendant le build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndRedirectIfOwnProfile();
+    });
+  }
+
+  // ✅ 3. FONCTION DE REDIRECTION SI C'EST SON PROPRE PROFIL
+  void _checkAndRedirectIfOwnProfile() {
+    final currentUser = supabase.auth.currentUser;
+    
+    // Si l'utilisateur est connecté ET que l'ID du profil visité est le sien
+    if (currentUser != null && currentUser.id == widget.creatorId) {
+      // On le redirige vers son propre écran de profil principal
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const ProfileScreen(), // <-- Écran de profil principal
+        ),
+      );
+    } else {
+      // Ce n'est pas son propre profil, on charge les données normalement
+      _loadCreatorData();
+    }
   }
 
   Future<void> _loadCreatorData() async {
@@ -65,7 +93,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
         _checkIfFollowing(),
         _loadFollowersCount(),
         _checkSubscriptionStatus(),
-        _loadCreatorStories(), // ✅ AJOUTÉ : Charge les stories en même temps
+        _loadCreatorStories(), 
       ]);
     } catch (e) {
       debugPrint('❌ Erreur chargement données créateur: $e');
@@ -75,14 +103,13 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     }
   }
 
-  // ✅ NOUVEAU : Charger les stories actives du créateur (moins de 24h grâce à la RLS)
   Future<void> _loadCreatorStories() async {
     try {
       final response = await supabase
           .from('stories')
           .select('id, media_url, media_type, text_content, background_color, created_at')
           .eq('creator_id', widget.creatorId)
-          .order('created_at', ascending: true); // Du plus ancien au plus récent pour la lecture
+          .order('created_at', ascending: true);
 
       if (mounted) {
         setState(() {
@@ -230,21 +257,20 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-  // ✅ NOUVEAU : Ouvrir le lecteur de stories
-    void _openStoriesViewer() {
+  void _openStoriesViewer() {
     if (_stories.isEmpty) return;
 
     Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (context) => ViewStoryScreen(
-      stories: _stories,
-      creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
-      creatorId: widget.creatorId, // ✅ CETTE LIGNE A ÉTÉ AJOUTÉE
-      creatorAvatar: _creator?['avatar_url'],
-    ),
-  ),
-);
+      context,
+      MaterialPageRoute(
+        builder: (context) => ViewStoryScreen(
+          stories: _stories,
+          creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
+          creatorId: widget.creatorId, 
+          creatorAvatar: _creator?['avatar_url'],
+        ),
+      ),
+    );
   }
 
   void _openPostDetail(int index) {
@@ -352,7 +378,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                // ✅ MODIFIÉ : Avatar avec anneau coloré et GestureDetector
                                 Stack(
                                   children: [
                                     GestureDetector(
@@ -363,7 +388,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                             ? const BoxDecoration(
                                                 shape: BoxShape.circle,
                                                 gradient: LinearGradient(
-                                                  colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)], // Dégradé Afrifan/Insta
+                                                  colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
                                                 ),
                                               )
                                             : null,

@@ -6,8 +6,9 @@ import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
 import 'post_selection_screen.dart';
-import 'ai_creation_screen.dart'; // ✅ IMPORT DE L'ÉCRAN IA
+import 'ai_creation_screen.dart';
 import 'package:audioplayers/audioplayers.dart';
+
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -26,16 +27,18 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   int _recordingSeconds = 0;
 
   final ImagePicker _imagePicker = ImagePicker();
-  // ✅ Liste des sons disponibles (Option A : Liste en dur)
   
   final List<Map<String, String>> _availableSounds = [
-  {'title': 'Amapiano Vibes', 'artist': 'DJ Maphorisa', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},    {'title': 'Afrobeat Fire', 'artist': 'Burna Boy', 'url': 'https://example.com/sound2.mp3'},
+    {'title': 'Amapiano Vibes', 'artist': 'DJ Maphorisa', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
+    {'title': 'Afrobeat Fire', 'artist': 'Burna Boy', 'url': 'https://example.com/sound2.mp3'},
     {'title': 'Coupé Décalé', 'artist': 'DJ Arafat', 'url': 'https://example.com/sound3.mp3'},
     {'title': 'Afro Trap', 'artist': 'MHD', 'url': 'https://example.com/sound4.mp3'},
     {'title': 'Gqom Beat', 'artist': 'Babes Wodumo', 'url': 'https://example.com/sound5.mp3'},
   ];
-    final AudioPlayer _audioPlayer = AudioPlayer();
-    Map<String, String>? _selectedSound; // ✅ Pour stocker le son choisi
+  
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  Map<String, String>? _selectedSound;
+
   @override
   void initState() {
     super.initState();
@@ -71,15 +74,14 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     }
   }
 
-  // ✅ OUVRIR L'ÉCRAN IA (Fonctionne sur Mobile ET Web)
   void _openAIScreen() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const AICreationScreen()),
     );
   }
-    // ✅ OUVRIR LA GALERIE DU TÉLÉPHONE (Photo ou Vidéo)
-  // ✅ OUVRIR LA GALERIE DU TÉLÉPHONE (Photo ou Vidéo)
+
+  // ✅ FONCTION POUR OUVRIR LA GALERIE (PHOTO OU VIDÉO)
   Future<void> _openGallery() async {
     showModalBottomSheet(
       context: context,
@@ -108,7 +110,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                       builder: (context) => PostSelectionScreen(
                         mediaPath: path, 
                         mediaType: 'photo', 
-                        xFile: file, // ✅ Virgule ajoutée ici
+                        xFile: file,
                         selectedSound: _selectedSound,
                       )
                     )
@@ -132,7 +134,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                       builder: (context) => PostSelectionScreen(
                         mediaPath: path, 
                         mediaType: 'video', 
-                        xFile: file, // ✅ Virgule ajoutée ici
+                        xFile: file,
                         selectedSound: _selectedSound,
                       )
                     )
@@ -146,7 +148,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       ),
     );
   }
-  // ✅ AFFICHER LA LISTE DES SONS
+
   void _showMusicSelectionSheet() {
     showModalBottomSheet(
       context: context,
@@ -175,23 +177,16 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               ),
               const SizedBox(height: 20),
               
-              // ✅ AFFICHAGE DE LA LISTE QU'ON A CRÉÉE À L'ÉTAPE 1
-...(_availableSounds ?? []).map((sound) {                return ListTile(
+              ...(_availableSounds ?? []).map((sound) {
+                return ListTile(
                   leading: const Icon(Icons.music_note, color: Color(0xFF8B5CF6)),
                   title: Text(sound['title']!, style: const TextStyle(color: Colors.white)),
                   subtitle: Text(sound['artist']!, style: const TextStyle(color: Colors.grey)),
-                                    onTap: () async {
-                    // 1. On arrête le son précédent s'il y en a un
+                  onTap: () async {
                     await _audioPlayer.stop();
-                    
-                    // 2. On lance le nouveau son
                     await _audioPlayer.play(UrlSource(sound['url']!));
-                    
-                    // 3. On ferme la fenêtre
-                    setState(() => _selectedSound = sound); // ✅ Sauvegarde le son choisi
+                    setState(() => _selectedSound = sound);
                     Navigator.pop(context); 
-                    
-                    // 4. Petit message de confirmation
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('🎵 Lecture de : ${sound['title']}')),
                     );
@@ -205,7 +200,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       },
     );
   }
-  // ✅ SIMULER LA CAPTURE SUR WEB (Ouvre la galerie du PC)
+
   Future<void> _simulateCaptureWeb(String type) async {
     try {
       final XFile? file = type == 'photo' 
@@ -281,8 +276,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               mediaPath: photo.path,
               mediaType: 'photo',
               xFile: photo,
-              selectedSound: _selectedSound, // ✅ AJOUTE CETTE LIGNE
-
+              selectedSound: _selectedSound,
             ),
           ),
         );
@@ -320,8 +314,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             builder: (context) => PostSelectionScreen(
               mediaPath: video.path,
               mediaType: 'video',
-              selectedSound: _selectedSound, // ✅ AJOUTE CETTE LIGNE ICI
-
+              selectedSound: _selectedSound,
               xFile: video,
             ),
           ),
@@ -348,8 +341,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   void dispose() {
     _controller?.dispose();
     _recordingTimer?.cancel();
-    _audioPlayer.dispose(); // ✅ AJOUTE CETTE LIGNE
-
+    _audioPlayer.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -357,25 +349,25 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     // ==========================================================
-    // 🌐 MODE WEB (Pour tester l'interface et l'IA sur Chrome)
+    //  MODE WEB
     // ==========================================================
     if (kIsWeb) {
       return Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            // Fond simulé (dégradé stylé)
             Positioned.fill(
               child: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-colors: const [
-  Color(0xFF8B5CF6), // Violet Afrifan
-  Color(0xFF4A148C), // Équivalent de Colors.purple.shade900
-  Colors.black,
-],                  ),
+                    colors: [
+                      Color(0xFF8B5CF6),
+                      Color(0xFF4A148C),
+                      Colors.black,
+                    ],
+                  ),
                 ),
                 child: const Center(
                   child: Column(
@@ -389,7 +381,6 @@ colors: const [
                 ),
               ),
             ),
-            // Overlay sombre
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
@@ -400,27 +391,25 @@ colors: const [
                 ),
               ),
             ),
-            // Barre d'outils (droite)
             Positioned(
               right: 16, top: MediaQuery.of(context).padding.top + 20, bottom: 120,
               child: Column(
                 children: [
                   _buildToolButton(icon: Icons.flash_off, onTap: () {}),
                   const SizedBox(height: 16),
-_buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionSheet),                  const SizedBox(height: 16),
+                  _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionSheet),
+                  const SizedBox(height: 16),
                   _buildToolButton(icon: Icons.grid_off, onTap: () {}),
                 ],
               ),
             ),
-            // Contrôles en bas
-                      // Contrôles en bas (Galerie + IA + Capture + Flip)
             Positioned(
               left: 0, right: 0, bottom: 30,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // ✅ 1. NOUVEAU BOUTON GALERIE (Tout à gauche)
+                  // ✅ BOUTON GALERIE
                   GestureDetector(
                     onTap: _openGallery,
                     child: Container(
@@ -429,7 +418,7 @@ _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionShee
                       child: const Icon(Icons.photo_library, color: Colors.white, size: 28),
                     ),
                   ),
-                  // ✅ 2. BOUTON IA
+                  // BOUTON IA
                   GestureDetector(
                     onTap: _openAIScreen,
                     child: Container(
@@ -445,9 +434,7 @@ _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionShee
                       ),
                     ),
                   ),
-                  // ✅ 3. BOUTON CAPTURE (Centre)
-                  // ... (Laisse le reste de ton code pour le bouton capture et flip ici) ...
-                  // Bouton capture (simulé)
+                  // BOUTON CAPTURE
                   GestureDetector(
                     onTap: () => _simulateCaptureWeb('photo'),
                     child: Container(
@@ -456,7 +443,7 @@ _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionShee
                       child: Container(margin: const EdgeInsets.all(8.0), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
                     ),
                   ),
-                  // Retourner caméra (désactivé)
+                  // FLIP CAMÉRA
                   GestureDetector(
                     onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Disponible sur mobile uniquement'), backgroundColor: Color(0xFF8B5CF6))),
                     child: Container(
@@ -474,7 +461,7 @@ _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionShee
     }
 
     // ==========================================================
-    // 📱 MODE MOBILE (Caméra Native Réelle - PRIORITAIRE)
+    // 📱 MODE MOBILE
     // ==========================================================
     if (!_isCameraInitialized) {
       return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6))));
@@ -499,54 +486,61 @@ _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionShee
               children: [
                 _buildToolButton(icon: _flashMode == FlashMode.always ? Icons.flash_on : Icons.flash_off, onTap: _toggleFlash),
                 const SizedBox(height: 16),
-_buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionSheet),                const SizedBox(height: 16),
+                _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionSheet),
+                const SizedBox(height: 16),
                 _buildToolButton(icon: _showGrid ? Icons.grid_on : Icons.grid_off, onTap: _toggleGrid),
               ],
             ),
           ),
-                          // ✅ AFFICHER LE SON SÉLECTIONNÉ
-                if (_selectedSound != null) ...[
-                  Positioned(
-                    bottom: 110,
-                    left: 16,
-                    right: 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade900.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.music_note, color: Color(0xFF8B5CF6), size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _selectedSound!['title']!,
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              setState(() => _selectedSound = null);
-                              _audioPlayer.stop();
-                            },
-                            child: const Icon(Icons.close, color: Colors.white54, size: 20),
-                          ),
-                        ],
+          if (_selectedSound != null)
+            Positioned(
+              bottom: 110,
+              left: 16,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade900.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.music_note, color: Color(0xFF8B5CF6), size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _selectedSound!['title']!,
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  ),
-                ],
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _selectedSound = null);
+                        _audioPlayer.stop();
+                      },
+                      child: const Icon(Icons.close, color: Colors.white54, size: 20),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Positioned(
             left: 0, right: 0, bottom: 30,
-            
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ✅ BOUTON IA (Gauche)
+                // ✅ BOUTON GALERIE (TOUT À GAUCHE)
+                GestureDetector(
+                  onTap: _openGallery,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.grey.shade900.withOpacity(0.8), borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.photo_library, color: Colors.white, size: 28),
+                  ),
+                ),
+                // BOUTON IA
                 GestureDetector(
                   onTap: _openAIScreen,
                   child: Container(
@@ -562,7 +556,7 @@ _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionShee
                     ),
                   ),
                 ),
-                // BOUTON CAPTURE (Centre)
+                // BOUTON CAPTURE
                 GestureDetector(
                   onTapDown: _isRecordingVideo ? null : (_) => _startRecording(),
                   onTapUp: _isRecordingVideo ? (_) => _stopRecording() : null,
@@ -578,7 +572,7 @@ _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionShee
                     ),
                   ),
                 ),
-                // Retourner caméra (Droite)
+                // FLIP CAMÉRA
                 GestureDetector(
                   onTap: _toggleCamera,
                   child: Container(width: 50, height: 50, decoration: const BoxDecoration(color: Color(0xFF8B5CF6), shape: BoxShape.circle), child: const Icon(Icons.flip_camera_ios, color: Colors.white, size: 28)),

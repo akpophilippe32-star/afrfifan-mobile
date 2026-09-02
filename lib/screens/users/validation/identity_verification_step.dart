@@ -516,11 +516,11 @@ class _IdentityVerificationStepState extends State<IdentityVerificationStep> {
           final file = File(image.path);
           
           await Supabase.instance.client.storage
-              .from('identity_documents')
+              .from('creator_documents')
               .upload(fileName, file, fileOptions: const FileOptions(upsert: true));
               
           final String publicUrl = Supabase.instance.client.storage
-              .from('identity_documents')
+              .from('creator_documents')
               .getPublicUrl(fileName);
               
           setState(() {

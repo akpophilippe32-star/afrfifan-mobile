@@ -2,6 +2,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+// ✅ IMPORTS DES 3 ÉCRANS + PARAMÈTRES
+import 'my_subscriptions_screen.dart';
+import 'my_followers_screen.dart';
+import 'my_following_screen.dart';
 import 'user_posts_feed_screen.dart';
 import '../settings/settings_screen.dart';
 import '../settings/personal_info_screen.dart'; 
@@ -17,21 +22,18 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveClientMixin {
+class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _profile;
   List<dynamic> _userPosts = [];
   List<Map<String, dynamic>> _userStories = [];
-
   bool _isLoading = true;
   bool _isUploading = false;
   String? _errorMessage;
-  int _selectedTab = 0;
+  int _selectedTab = 0; // 0=Statuts, 1=Posts
   int _totalPosts = 0;
   int _totalLikes = 0;
   bool _hasLoadedOnce = false;
-  
-  // ✅ NOUVEAU : Pour suivre le statut de la demande créateur
-  String _applicationStatus = 'none'; // 'none', 'pending', 'rejected', 'accepted'
+  String _applicationStatus = 'none';
 
   @override
   void initState() {
@@ -39,12 +41,8 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
     _loadProfileData();
   }
 
-  @override
-  bool get wantKeepAlive => true;
-
   Future<void> _loadProfileData() async {
     if (_hasLoadedOnce) return;
-
     setState(() { _isLoading = true; _errorMessage = null; });
 
     final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -71,7 +69,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
         'is_verified': false,
       };
 
-      // ✅ VÉRIFICATION INTELLIGENTE DU STATUT DE LA DEMANDE CRÉATEUR
       if (_profile?['role'] == 'creator' && _profile?['is_verified'] == true) {
         _applicationStatus = 'accepted';
       } else {
@@ -84,9 +81,9 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
             .maybeSingle();
 
         if (appData != null) {
-          _applicationStatus = appData['status']; // Sera 'pending' ou 'rejected'
+          _applicationStatus = appData['status'];
         } else {
-          _applicationStatus = 'none'; // Aucune demande précédente
+          _applicationStatus = 'none';
         }
       }
 
@@ -127,6 +124,143 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
     }
   }
 
+  // ✅ NOUVEAU : Menu hamburger qui s'ouvre en bas
+  void _showHamburgerMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade700,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                'Menu',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // ✅ 4 OPTIONS DU MENU
+            _buildMenuItem(
+              icon: Icons.group,
+              label: 'Abonnés',
+              subtitle: 'Voir qui te suit',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MyFollowersScreen()),
+                );
+              },
+            ),
+            _buildMenuItem(
+              icon: Icons.people,
+              label: 'Suivis',
+              subtitle: 'Voir qui tu suis',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MyFollowingScreen()),
+                );
+              },
+            ),
+            _buildMenuItem(
+              icon: Icons.star,
+              label: 'Abonnements',
+              subtitle: 'Tes abonnements payants',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MySubscriptionsScreen()),
+                );
+              },
+            ),
+            
+            const Divider(color: Color(0xFF2A2A2A), height: 1),
+            
+            _buildMenuItem(
+              icon: Icons.settings,
+              label: 'Paramètres',
+              subtitle: 'Configuration du compte',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SettingsScreen(username: _profile?['full_name']),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ Widget pour chaque item du menu
+  Widget _buildMenuItem({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF8B5CF6).withOpacity(0.15),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: const Color(0xFF8B5CF6), size: 24),
+      ),
+      title: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          color: Colors.grey.shade400,
+          fontSize: 13,
+        ),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right,
+        color: Colors.grey,
+        size: 24,
+      ),
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+    );
+  }
+
   void _showAvatarOptions() {
     showModalBottomSheet(
       context: context,
@@ -158,7 +292,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
   void _viewAvatarFullScreen() {
     final avatarUrl = _profile?['avatar_url'];
     if (avatarUrl == null || avatarUrl.isEmpty) return;
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -182,27 +315,20 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
   Future<void> _updateAvatar() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
-
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 500);
     if (image == null) return;
-
     setState(() { _isUploading = true; });
-
     try {
       final file = File(image.path);
       final String fileName = '$userId/avatar.jpg'; 
-
       final oldAvatarUrl = _profile?['avatar_url'];
       if (oldAvatarUrl != null && oldAvatarUrl.contains(fileName)) {
         try { await Supabase.instance.client.storage.from('avatars').remove([fileName]); } catch (_) {}
       }
-
       await Supabase.instance.client.storage.from('avatars').upload(fileName, file, fileOptions: const FileOptions(upsert: true));
       final String publicUrl = Supabase.instance.client.storage.from('avatars').getPublicUrl(fileName);
-
       await Supabase.instance.client.from('profiles').update({'avatar_url': publicUrl}).eq('id', userId);
-      
       if (mounted) {
         setState(() { _profile?['avatar_url'] = publicUrl; });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Photo mise à jour !"), backgroundColor: Colors.green));
@@ -225,8 +351,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-
     if (_isLoading) {
       return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6))));
     }
@@ -267,18 +391,14 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
                 padding: const EdgeInsets.fromLTRB(20, 50, 20, 30),
                 child: Column(
                   children: [
+                    // ✅ CHANGÉ : Icône hamburger au lieu de paramètres
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 28),
-                          tooltip: 'Paramètres',
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => SettingsScreen(username: _profile?['full_name']),
-                            ),
-                          ),
+                          icon: const Icon(Icons.menu, color: Colors.white, size: 28), // ☰ Hamburger
+                          tooltip: 'Menu',
+                          onPressed: _showHamburgerMenu,
                         ),
                       ],
                     ),
@@ -330,7 +450,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
                     Text('@${_profile?['username'] ?? 'username'}', style: const TextStyle(color: Colors.grey, fontSize: 15)),
                     const SizedBox(height: 24),
                     
-                    // ✅ BOUTON D'ACTION INTELLIGENT
                     Row(
                       children: [
                         Expanded(
@@ -339,7 +458,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
                               if (_applicationStatus == 'accepted') {
                                 Navigator.push(context, MaterialPageRoute(builder: (context) => const CreatorDashboardScreen()));
                               } else if (_applicationStatus == 'pending') {
-                                // ✅ EMPÊCHE DE RELANCER LA DEMANDE
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Votre demande est en cours de vérification. Veuillez patienter.'),
@@ -348,7 +466,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
                                   ),
                                 );
                               } else {
-                                // ✅ 'none' ou 'rejected' : on lance ou relance l'activation
                                 Navigator.push(context, MaterialPageRoute(builder: (context) => const PersonalInfoStep()));
                               }
                             },
@@ -363,7 +480,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                             ),
                             style: ElevatedButton.styleFrom(
-                              // ✅ Le bouton devient gris si c'est en cours
                               backgroundColor: _applicationStatus == 'pending' ? Colors.grey.shade700 : const Color(0xFF8B5CF6),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -505,7 +621,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
         ),
       );
     }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -547,7 +662,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
     final mediaType = story['media_type'] ?? 'image';
     final mediaUrl = story['media_url'];
     final bgColor = story['background_color'];
-
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
@@ -605,7 +719,6 @@ class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveCl
         final imageUrl = post['media_url'];
         final viewsCount = post['likes_count'] ?? 0;
         final mediaType = post['media_type'] ?? 'image';
-
         return GestureDetector(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserPostsFeedScreen(posts: _userPosts, initialIndex: index))),
           child: ClipRRect(

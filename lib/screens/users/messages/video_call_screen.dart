@@ -58,8 +58,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     print("📡 [VideoCallScreen] Création du canal de synchro...");
     final channel = Supabase.instance.client.channel('call_sync_$callId');
 
+    // Écoute des messages broadcast
     channel.onBroadcast(event: 'user_joined', callback: (payload) {
-      print("✅ [VideoCallScreen] L'autre utilisateur est connecté !");
+      print("✅ [VideoCallScreen] L'autre utilisateur est connecté (broadcast) !");
       if (mounted && !_isOtherUserJoined) {
         setState(() => _isOtherUserJoined = true);
         _startTimer();
@@ -74,6 +75,54 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         Navigator.of(context).pop();
       }
     });
+
+    // ✅ Écouter les changements de statut de l'appel dans la BDD via PostgresChanges
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'calls',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'id',
+        value: callId,
+      ),
+      callback: (payload) {
+        final newStatus = payload.newRecord?['status'];
+        print("📡 [VideoCallScreen] Statut appel mis à jour : $newStatus");
+        if (newStatus == 'connected' && !_isOtherUserJoined) {
+          print("✅ [VideoCallScreen] L'autre personne a décroché !");
+          if (mounted) {
+            setState(() => _isOtherUserJoined = true);
+            _startTimer();
+          }
+        } else if (newStatus == 'cancelled' || newStatus == 'ended' || newStatus == 'rejected') {
+          print("📴 [VideoCallScreen] L'appel a été terminé par l'autre");
+          if (mounted && !_isLeaving) {
+            _isLeaving = true;
+            Navigator.of(context).pop();
+          }
+        }
+      },
+    );
+
+    // Écouter les suppressions
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.delete,
+      schema: 'public',
+      table: 'calls',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'id',
+        value: callId,
+      ),
+      callback: (payload) {
+        print("📴 [VideoCallScreen] L'appel a été supprimé de la BDD");
+        if (mounted && !_isLeaving) {
+          _isLeaving = true;
+          Navigator.of(context).pop();
+        }
+      },
+    );
 
     channel.subscribe();
     _syncChannel = channel;
@@ -91,7 +140,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   Future<void> _initAgoraVideo() async {
     print("🎥 [VideoCallScreen] Initialisation de la vidéo...");
     
-    // ✅ 1. DEMANDER LES PERMISSIONS
+    // ✅ DEMANDER LES PERMISSIONS
     final permissions = await [Permission.microphone, Permission.camera].request();
     if (permissions[Permission.camera] != PermissionStatus.granted ||
         permissions[Permission.microphone] != PermissionStatus.granted) {
@@ -111,16 +160,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     await _engine!.enableVideo();
     await _engine!.setEnableSpeakerphone(true);
 
-    // ✅ 2. CONFIGURER LA VIDÉO LOCALE
+    // ✅ CONFIGURER LA VIDÉO LOCALE
     _localViewController = VideoViewController(
       rtcEngine: _engine!,
       canvas: const VideoCanvas(uid: 0),
     );
 
-    // 🔥 CORRECTION MAJEURE : Démarrer l'aperçu local pour que la caméra s'affiche sur les 2 téléphones
     await _engine!.startPreview();
-    
-    // Forcer le rafraîchissement de l'UI pour afficher immédiatement la petite fenêtre
     if (mounted) setState(() {});
 
     _engine?.registerEventHandler(
@@ -129,7 +175,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           print("🎉 [VideoCallScreen] L'autre a rejoint ! UID: $remoteUid");
           if (mounted) {
             setState(() => _isOtherUserJoined = true);
-            // ✅ 3. CONFIGURER LA VIDÉO DISTANTE
             _remoteViewController = VideoViewController.remote(
               rtcEngine: _engine!,
               canvas: VideoCanvas(uid: remoteUid),
@@ -225,7 +270,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // ✅ VIDÉO DISTANTE (Plein écran)
+          // VIDÉO DISTANTE (plein écran)
           if (_isOtherUserJoined && _remoteViewController != null)
             Positioned.fill(
               child: AgoraVideoView(controller: _remoteViewController!),
@@ -253,8 +298,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               ),
             ),
 
-          // ✅ MA VIDÉO LOCALE (Petit rectangle en haut à droite)
-          // On l'affiche dès que _localViewController est créé (grâce au setState ajouté plus haut)
+          // MA VIDÉO LOCALE (petit rectangle en haut à droite)
           if (_localViewController != null)
             Positioned(
               top: 60,
@@ -275,7 +319,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               ),
             ),
 
-          // ✅ BOUTONS DE CONTRÔLE (En bas)
+          // BOUTONS DE CONTRÔLE (en bas)
           Positioned(
             bottom: 60,
             left: 0,

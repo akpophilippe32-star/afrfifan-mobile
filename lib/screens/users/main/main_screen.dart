@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ✅ Pour fermer l'application proprement
 import '../../../theme/app_colors.dart';
 import '../home/discovery_screen.dart';
 import '../explore/explore_screen.dart';
@@ -16,10 +17,11 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0; // 0=Home, 1=Explore, 2=+, 3=Messages, 4=Profile
   
-  // ✅ NOUVEAU : Contrôleur pour gérer le swipe horizontal
   final PageController _pageController = PageController();
 
-  // ✅ Les 4 vrais écrans (le "+" n'est pas un écran, c'est une action)
+  // ✅ NOUVEAU : Le "Chronomètre" pour mesurer le délai de 5 secondes
+  DateTime? _lastBackPressed;
+
   final List<Widget> _screens = const [
     DiscoveryScreen(),   // Index PageView: 0  -> Index Nav: 0
     ExploreScreen(),     // Index PageView: 1  -> Index Nav: 1
@@ -29,137 +31,204 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
-    _pageController.dispose(); // ✅ Nettoyage mémoire
+    _pageController.dispose();
     super.dispose();
   }
 
-  // ✅ ASTUCE : Convertir l'index de la barre de nav en index de PageView
   int _getPageIndexFromNavIndex(int navIndex) {
-    if (navIndex < 2) return navIndex;       // 0 -> 0, 1 -> 1
-    if (navIndex > 2) return navIndex - 1;   // 3 -> 2, 4 -> 3
-    return 0; // Fallback pour le bouton "+"
+    if (navIndex < 2) return navIndex;       
+    if (navIndex > 2) return navIndex - 1;   
+    return 0; 
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      // ✅ REMPLACÉ IndexedStack PAR PageView pour le swipe
-      body: PageView(
-        controller: _pageController,
-        physics: const BouncingScrollPhysics(), // Effet de rebond fluide
-        onPageChanged: (pageIndex) {
-          // Quand on swipe, on met à jour l'onglet actif en bas
-          setState(() {
-            _currentIndex = pageIndex < 2 ? pageIndex : pageIndex + 1;
-          });
-        },
-        children: _screens,
-      ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Colors.black,
-          border: Border(
-            top: BorderSide(color: Colors.white24, width: 0.5),
-          ),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) async {
-            // ✅ GESTION DU BOUTON "+" (Index 2)
-            if (index == 2) {
-              await _openCameraScreen();
-              return; // On ne change pas l'onglet actif, on reste où on était
-            }
+    // ✅ NOUVEAU : Le "Garde" qui intercepte le bouton retour du téléphone
+    return PopScope(
+      canPop: false, // On dit à Flutter : "Ne ferme pas l'app tout de suite, je gère"
+      onPopInvoked: (bool didPop) async {
+        if (didPop) return; // Si c'est déjà fermé, on ne fait rien
 
-            // ✅ GESTION DES AUTRES ONGLETS
-            setState(() {
-              _currentIndex = index;
-            });
+        if (_currentIndex == 0) {
+          // CAS 1 : On est DÉJÀ sur l'onglet Home
+          final now = DateTime.now();
+          
+          // Si le dernier appui était il y a moins de 5 secondes
+          if (_lastBackPressed != null && 
+              now.difference(_lastBackPressed!) < const Duration(seconds: 5)) {
             
-            // Animation fluide vers la page correspondante
-            final targetPageIndex = _getPageIndexFromNavIndex(index);
-            _pageController.animateToPage(
-              targetPageIndex,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
+            // ✅ C'est le 2ème appui rapide : On ferme l'application
+            SystemNavigator.pop();
+            
+          } else {
+            // ✅ C'est le 1er appui : On lance le chrono et on affiche le message
+            _lastBackPressed = now;
+            ScaffoldMessenger.of(context).clearSnackBars(); // Nettoie les anciens messages
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Appuyez encore pour quitter', textAlign: TextAlign.center),
+                backgroundColor: Colors.black87,
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 2), // Le message disparaît visuellement après 2s
+              ),
             );
+          }
+        } else {
+          // CAS 2 : On est sur un AUTRE onglet (Profil, Messages, etc.)
+          // On ramène l'utilisateur à la maison (Home)
+          setState(() {
+            _currentIndex = 0;
+          });
+          
+          _pageController.animateToPage(
+            0, // Retour à l'index 0 du PageView (DiscoveryScreen)
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        }
+      },
+      
+      // Le reste de ton interface est enveloppé dans ce PopScope
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: PageView(
+          controller: _pageController,
+          physics: const BouncingScrollPhysics(),
+          onPageChanged: (pageIndex) {
+            setState(() {
+              _currentIndex = pageIndex < 2 ? pageIndex : pageIndex + 1;
+            });
           },
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.black,
-          selectedItemColor: Colors.white,
-          unselectedItemColor: Colors.white60,
-          selectedFontSize: 11,
-          unselectedFontSize: 11,
-          items: [
-            // 1. Home
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home_filled),
-              label: 'Home',
+          children: _screens,
+        ),
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            color: Colors.black,
+            border: Border(
+              top: BorderSide(color: Colors.white24, width: 0.5),
             ),
-            // 2. Explorer
-            BottomNavigationBarItem(
-              icon: Icon(Icons.explore_outlined),
-              activeIcon: Icon(Icons.explore),
-              label: 'Explorer',
-            ),
-            // 3. Créer (+) - Style TikTok/Snapchat
-            BottomNavigationBarItem(
-              icon: Icon(Icons.add_circle, size: 40, color: Color(0xFF8B5CF6)), // Simplifié pour plus de propreté
-              label: '', 
-            ),
-            // 4. Messages
-            BottomNavigationBarItem(
-              icon: SizedBox(
-                width: 28,
-                height: 28,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Center(child: Icon(Icons.chat_bubble_outline, size: 24)),
-                    Positioned(
-                      right: -4,
-                      top: -2,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
+          ),
+          child: BottomNavigationBar(
+            currentIndex: _currentIndex,
+            onTap: (index) async {
+              if (index == 2) {
+                await _openCameraScreen();
+                return;
+              }
+
+              setState(() {
+                _currentIndex = index;
+              });
+              
+              final targetPageIndex = _getPageIndexFromNavIndex(index);
+              _pageController.animateToPage(
+                targetPageIndex,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              );
+            },
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: Colors.black,
+            selectedItemColor: Colors.white,
+            unselectedItemColor: Colors.white60,
+            selectedFontSize: 11,
+            unselectedFontSize: 11,
+            
+            // ✅ CORRECTION ICI : J'ai enlevé le mot-clé 'const' devant le crochet '['
+            // Cela empêche l'erreur de compilation avec le Container imbriqué
+            items: [
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.home_outlined),
+                activeIcon: Icon(Icons.home_filled),
+                label: 'Home',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.explore_outlined),
+                activeIcon: Icon(Icons.explore),
+                label: 'Explorer',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.add_circle, size: 40, color: Color(0xFF8B5CF6)),
+                label: '', 
+              ),
+              
+              // Item Messages (avec le badge)
+              const BottomNavigationBarItem(
+                icon: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Center(child: Icon(Icons.chat_bubble_outline, size: 24)),
+                      Positioned(
+                        right: -4,
+                        top: -2,
+                        child: Padding(
+                          padding: EdgeInsets.all(2.0), // Simplifié pour éviter l'erreur const
+                          child: Icon(Icons.circle, color: Colors.red, size: 16),
                         ),
+                      ),
+                      Positioned(
+                        right: -1,
+                        top: 1,
                         child: Text(
                           '9',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 8,
+                            fontSize: 9,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                activeIcon: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Center(child: Icon(Icons.chat_bubble, size: 24)),
+                      Positioned(
+                        right: -4,
+                        top: -2,
+                        child: Padding(
+                          padding: EdgeInsets.all(2.0),
+                          child: Icon(Icons.circle, color: Colors.red, size: 16),
+                        ),
+                      ),
+                      Positioned(
+                        right: -1,
+                        top: 1,
+                        child: Text(
+                          '9',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                label: 'Messages',
               ),
-              activeIcon: SizedBox(
-                width: 28,
-                height: 28,
-                child: Center(child: Icon(Icons.chat_bubble, size: 24)),
+              
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.person_outline),
+                activeIcon: Icon(Icons.person),
+                label: 'Profile',
               ),
-              label: 'Messages',
-            ),
-            // 5. Profile
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Profile',
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    );
+    ); // ✅ Fin du PopScope
   }
 
-  /// ✅ Ouvre la caméra style Snapchat
   Future<void> _openCameraScreen() async {
     await Navigator.push(
       context,

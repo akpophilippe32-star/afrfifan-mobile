@@ -10,18 +10,12 @@ import 'subscription_payment_screen.dart';
 import '../../../widgets/tip_dialog.dart';
 import '../../../widgets/report_dialog.dart';
 import '../profile/view_story_screen.dart'; 
-
-// ✅ 1. AJOUT DE L'IMPORT VERS TON ÉCRAN DE PROFIL PRINCIPAL
-// ⚠️ Vérifie que le chemin correspond bien à ton arborescence (ex: ../profile/profile_screen.dart)
 import '../profile/profile_screen.dart'; 
 
 class CreatorProfileScreen extends StatefulWidget {
   final String creatorId;
 
-  const CreatorProfileScreen({
-    super.key,
-    required this.creatorId,
-  });
+  const CreatorProfileScreen({super.key, required this.creatorId});
 
   @override
   State<CreatorProfileScreen> createState() => _CreatorProfileScreenState();
@@ -40,15 +34,12 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   int _postsCount = 0;
   int _selectedTab = 0;
 
-  // ✅ NOUVEAU : Variables pour les Stories
   List<Map<String, dynamic>> _stories = [];
   bool _hasActiveStories = false;
 
-  // ✅ NOUVEAU : On stocke tout l'abonnement actuel au lieu d'un simple booléen
   Map<String, dynamic>? _currentSubscription;
   int _daysRemaining = 0;
 
-  // ✅ Getters pour savoir facilement où en est l'utilisateur
   bool get _isSubscribed => _currentSubscription != null;
   bool get _isProSubscriber => _currentSubscription?['tier_type'] == 'pro';
   bool get _isPremiumSubscriber => _currentSubscription?['tier_type'] == 'premium';
@@ -58,28 +49,19 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ 2. VÉRIFICATION IMMÉDIATE AVANT DE CHARGER QUOI QUE CE SOIT
-    // On utilise addPostFrameCallback pour éviter les erreurs de navigation pendant le build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndRedirectIfOwnProfile();
     });
   }
 
-  // ✅ 3. FONCTION DE REDIRECTION SI C'EST SON PROPRE PROFIL
   void _checkAndRedirectIfOwnProfile() {
     final currentUser = supabase.auth.currentUser;
-    
-    // Si l'utilisateur est connecté ET que l'ID du profil visité est le sien
     if (currentUser != null && currentUser.id == widget.creatorId) {
-      // On le redirige vers son propre écran de profil principal
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (context) => const ProfileScreen(), // <-- Écran de profil principal
-        ),
+        MaterialPageRoute(builder: (context) => const ProfileScreen()),
       );
     } else {
-      // Ce n'est pas son propre profil, on charge les données normalement
       _loadCreatorData();
     }
   }
@@ -98,9 +80,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     } catch (e) {
       debugPrint('❌ Erreur chargement données créateur: $e');
     }
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
+    if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _loadCreatorStories() async {
@@ -154,7 +134,8 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     try {
       final response = await supabase
           .from('profiles')
-          .select('id, username, full_name, avatar_url, bio, is_verified, premium_price, pro_price')
+          // ✅ NOUVELLE LOGIQUE : On récupère is_creator pour savoir comment se comporter
+          .select('id, username, full_name, avatar_url, bio, is_verified, is_creator, premium_price, pro_price')
           .eq('id', widget.creatorId)
           .maybeSingle();
 
@@ -172,7 +153,8 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     try {
       final response = await supabase
           .from('posts')
-          .select('id, media_url, media_type, caption, title, created_at, likes_count, comments_count')
+          // ✅ NOUVELLE LOGIQUE : On récupère is_premium pour savoir quels posts flouter
+          .select('id, media_url, media_type, caption, title, is_premium, created_at, likes_count, comments_count')
           .eq('user_id', widget.creatorId)
           .order('created_at', ascending: false)
           .limit(30);
@@ -222,7 +204,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Veuillez vous connecter pour suivre ce créateur.'), backgroundColor: Colors.red),
+        const SnackBar(content: Text('Veuillez vous connecter pour suivre.'), backgroundColor: Colors.red),
       );
       return;
     }
@@ -241,10 +223,67 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     }
   }
 
+  // ✅ NOUVELLE LOGIQUE : Gestion intelligente des messages
   void _openChat() {
     final currentUser = supabase.auth.currentUser;
-    if (currentUser == null) return;
-    final creatorName = (_creator?['username'] ?? _creator?['full_name'] ?? 'Créateur').toString();
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connectez-vous pour envoyer un message'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    final bool isCreator = _creator?['is_creator'] == true;
+
+    // Si c'est un créateur ET que l'utilisateur n'est pas abonné PRO
+    if (isCreator && !_isProSubscriber) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Row(
+            children: [
+              Icon(Icons.lock, color: Color(0xFF8B5CF6)),
+              SizedBox(width: 8),
+              Text('Contenu Réservé', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: const Text(
+            'Les messages privés avec ce créateur sont réservés aux abonnés PRO. Mettez à niveau votre abonnement pour débloquer cette fonctionnalité.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // Redirige vers l'écran de paiement pour le niveau PRO
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SubscriptionPaymentScreen(
+                      creatorId: widget.creatorId,
+                      creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
+                      tierType: 'pro',
+                      price: (_creator?['pro_price'] ?? 0).toDouble(),
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: brandViolet),
+              child: const Text('Devenir Abonné PRO', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      return; // On arrête ici, on n'ouvre pas le chat
+    }
+
+    // Si ce n'est pas un créateur, OU si l'utilisateur est abonné PRO : on ouvre le chat normalement
+    final creatorName = (_creator?['username'] ?? _creator?['full_name'] ?? 'Utilisateur').toString();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -259,7 +298,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
 
   void _openStoriesViewer() {
     if (_stories.isEmpty) return;
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -274,15 +312,20 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   }
 
   void _openPostDetail(int index) {
-    if (!_isSubscribed) {
+    final bool isCreator = _creator?['is_creator'] == true;
+    final bool isPostPremium = _posts[index]['is_premium'] == true;
+    
+    // ✅ NOUVELLE LOGIQUE : On ne bloque que si c'est un créateur ET que le post est premium ET qu'on n'est pas abonné
+    final bool isLocked = isCreator && isPostPremium && !_isSubscribed;
+
+    if (isLocked) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Abonnez-vous pour voir ce contenu en détail'), backgroundColor: Color(0xFF8B5CF6)),
+        const SnackBar(content: Text('Abonnez-vous pour voir ce contenu exclusif'), backgroundColor: Color(0xFF8B5CF6)),
       );
       return;
     }
     
     final creatorName = _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur';
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -307,6 +350,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isVerifiedCreator = _creator?['is_verified'] == true;
+    final bool isCreator = _creator?['is_creator'] == true; // ✅ Variable clé
     final double premiumPrice = (_creator?['premium_price'] ?? 0).toDouble();
     final double proPrice = (_creator?['pro_price'] ?? 0).toDouble();
     final bool hasPrices = premiumPrice > 0 || proPrice > 0;
@@ -316,7 +360,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
           : _creator == null
-              ? const Center(child: Text('Créateur introuvable', style: TextStyle(color: Colors.white)))
+              ? const Center(child: Text('Profil introuvable', style: TextStyle(color: Colors.white)))
               : CustomScrollView(
                   slivers: [
                     SliverAppBar(
@@ -387,9 +431,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                         decoration: _hasActiveStories
                                             ? const BoxDecoration(
                                                 shape: BoxShape.circle,
-                                                gradient: LinearGradient(
-                                                  colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
-                                                ),
+                                                gradient: LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)]),
                                               )
                                             : null,
                                         child: CircleAvatar(
@@ -426,7 +468,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                         children: [
                                           Flexible(
                                             child: Text(
-                                              (_creator?['full_name'] ?? _creator?['username'] ?? 'Créateur').toString(),
+                                              (_creator?['full_name'] ?? _creator?['username'] ?? 'Utilisateur').toString(),
                                               style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -469,7 +511,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                         context: context,
                                         builder: (context) => TipDialog(
                                           creatorId: widget.creatorId,
-                                          creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
+                                          creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Utilisateur',
                                         ),
                                       );
                                     },
@@ -486,21 +528,28 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            if (_isProSubscriber)
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton.icon(
-                                  onPressed: _openChat,
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.white,
-                                    side: BorderSide(color: Colors.grey.shade700),
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  ),
-                                  icon: const Icon(Icons.message_outlined, size: 18),
-                                  label: const Text('Message privé'),
+                            
+                            // ✅ NOUVELLE LOGIQUE : Le bouton de message s'adapte au statut
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _openChat, // La logique de blocage est DANS la fonction _openChat
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: BorderSide(color: isCreator && !_isProSubscriber ? Colors.orange : Colors.grey.shade700),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                ),
+                                icon: Icon(
+                                  isCreator && !_isProSubscriber ? Icons.lock_outline : Icons.message_outlined, 
+                                  size: 18
+                                ),
+                                label: Text(
+                                  isCreator && !_isProSubscriber ? 'Message (Nécessite PRO)' : 'Message privé',
                                 ),
                               ),
+                            ),
+
                             const SizedBox(height: 16),
                             if (_creator?['bio'] != null && _creator!['bio'].toString().isNotEmpty)
                               Text(_creator!['bio'].toString(), style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4)),
@@ -514,7 +563,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               ],
                             ),
                             const SizedBox(height: 24),
-                            if (isVerifiedCreator && hasPrices) ...[
+                            
+                            // ✅ NOUVELLE LOGIQUE : On n'affiche les cartes d'abonnement QUE si c'est un créateur avec des prix
+                            if (isCreator && hasPrices) ...[
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
@@ -529,24 +580,16 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                   children: [
                                     if (premiumPrice > 0)
                                       _buildMembershipCard(
-                                        'PREMIUM', 
-                                        'Fan', 
-                                        premiumPrice, 
+                                        'PREMIUM', 'Fan', premiumPrice, 
                                         ['Accès à tous les posts', 'Accès aux lives', 'Contenu exclusif'], 
-                                        isPro: false,
-                                        currentTier: _currentSubscription?['tier_type'],
-                                        daysRemaining: _daysRemaining,
+                                        isPro: false, currentTier: _currentSubscription?['tier_type'], daysRemaining: _daysRemaining,
                                       ),
                                     if (premiumPrice > 0 && proPrice > 0) const SizedBox(width: 16),
                                     if (proPrice > 0)
                                       _buildMembershipCard(
-                                        'PRO', 
-                                        'Membre VIP', 
-                                        proPrice, 
+                                        'PRO', 'Membre VIP', proPrice, 
                                         ['Tout le contenu Premium', 'Vidéos exclusives', 'Messages privés', 'Appels vidéo/audio'], 
-                                        isPro: true,
-                                        currentTier: _currentSubscription?['tier_type'],
-                                        daysRemaining: _daysRemaining,
+                                        isPro: true, currentTier: _currentSubscription?['tier_type'], daysRemaining: _daysRemaining,
                                       ),
                                   ],
                                 ),
@@ -580,7 +623,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                 final likesCount = post['likes_count'] ?? 0;
                                 final title = post['title'] ?? post['caption'] ?? '';
 
-                                final bool isLocked = !_isSubscribed;
+                                // ✅ NOUVELLE LOGIQUE ULTIME : 
+                                // On floute SEULEMENT si : C'est un créateur ET le post est premium ET l'utilisateur n'est pas abonné
+                                final bool isLocked = isCreator && (post['is_premium'] == true) && !_isSubscribed;
 
                                 return GestureDetector(
                                   onTap: () => _openPostDetail(index),
@@ -598,6 +643,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                                     child: Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
                                                   )
                                                 : Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
+                                          
                                           if (isLocked)
                                             Container(
                                               color: Colors.black.withOpacity(0.4),
@@ -611,7 +657,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                                       child: const Icon(Icons.lock, color: Colors.white, size: 24),
                                                     ),
                                                     const SizedBox(height: 8),
-                                                    const Text('Abonné', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                                    const Text('Contenu Exclusif', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                                                   ],
                                                 ),
                                               ),
@@ -674,15 +720,8 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   }
 
   Widget _buildMembershipCard(
-    String badge, 
-    String title, 
-    double price, 
-    List<String> features, 
-    {
-      required bool isPro,
-      required String? currentTier,
-      required int daysRemaining,
-    }
+    String badge, String title, double price, List<String> features, 
+    {required bool isPro, required String? currentTier, required int daysRemaining}
   ) {
     bool isCurrentTier = currentTier == (isPro ? 'pro' : 'premium');
     bool isDowngradeBlocked = currentTier == 'pro' && !isPro;
@@ -693,17 +732,17 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     Color textColor = isPro ? brandViolet : Colors.white;
 
     if (isCurrentTier) {
-      buttonText = 'Déjà abonné ($daysRemaining jours restants)';
+      buttonText = 'Déjà abonné ($daysRemaining j.)';
       isButtonEnabled = false;
       buttonColor = Colors.grey.shade800;
       textColor = Colors.grey.shade400;
     } else if (isDowngradeBlocked) {
-      buttonText = 'Disponible à la fin de votre période Pro';
+      buttonText = 'Disponible après période Pro';
       isButtonEnabled = false;
       buttonColor = Colors.grey.shade800;
       textColor = Colors.grey.shade400;
     } else if (currentTier != null && !isPro) {
-      buttonText = 'Passer à Pro ($daysRemaining jours restants sur Premium)';
+      buttonText = 'Passer à Pro';
     }
 
     return Container(
@@ -777,11 +816,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
               child: Text(
                 buttonText,
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: textColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                ),
+                style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 11),
               ),
             ),
           ),

@@ -28,6 +28,13 @@ dependencies:
   camera: ^0.10.5
   http: ^1.1.0
   audioplayers: ^6.0.0
+  
+  # ✅ NOUVEAUX PACKAGES POUR LE MODE HORS LIGNE (Style WhatsApp)
+  hive: ^2.2.3                  # Base de données locale ultra-rapide
+  hive_flutter: ^1.1.0          # Intégration Flutter pour Hive
+  connectivity_plus: ^6.0.5     # Détecte si l'utilisateur a internet ou non
+  flutter_cache_manager: ^3.4.1 # Gère le téléchargement et le cache des vidéos
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

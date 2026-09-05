@@ -73,8 +73,6 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
     }
   }
 
-
-
   Future<void> _fetchFollowedIds() async {
     if (_currentUserId == null) {
       if (mounted) setState(() => _followedIds = <String>{}); // ✅ Initialise avec un Set vide
@@ -126,10 +124,11 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
     }
   }
 
+  // ✅ MODIFICATION 1 : Récupérer is_premium pour les posts et is_creator pour les profils
   Future<void> _fetchAndSetPosts() async {
     final postsResponse = await supabase
         .from('posts')
-        .select('id, user_id, media_url, media_type, content, likes_count, comments_count, created_at')
+        .select('id, user_id, media_url, media_type, content, is_premium, likes_count, comments_count, created_at') // ⬅️ AJOUT DE is_premium
         .order('created_at', ascending: false)
         .limit(30);
 
@@ -137,7 +136,13 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
     if (posts.isEmpty) return;
 
     final userIds = posts.map((p) => p['user_id'] as String).toSet().toList();
-    final profilesResponse = await supabase.from('profiles').select('id, username, avatar_url').inFilter('id', userIds);
+    
+    // ⬅️ AJOUT DE is_creator dans la requête des profils
+    final profilesResponse = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, is_creator')
+        .inFilter('id', userIds);
+        
     final profilesMap = {for (var p in List<Map<String, dynamic>>.from(profilesResponse)) p['id'] as String: p};
 
     if (mounted) {
@@ -352,9 +357,13 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
                                 final mediaUrl = post['media_url']?.toString();
                                 final mediaType = post['media_type']?.toString() ?? 'image';
 
-                                // ✅ LOGIQUE DE VERROUILLAGE
+                                // ✅ MODIFICATION 2 : NOUVELLE LOGIQUE DE VERROUILLAGE (Intelligente)
                                 final bool isMyOwnPost = (_currentUserId == creatorId);
-                                final bool isLocked = !isMyOwnPost && !_subscribedCreatorIds.contains(creatorId);
+                                final bool isCreator = profileData?['is_creator'] == true; // Est-ce un créateur ?
+                                final bool isPostPremium = post['is_premium'] == true;     // Est-ce un post payant ?
+                                
+                                // On verrouille SEULEMENT si : C'est un créateur + Le post est premium + Ce n'est pas mon post + Je ne suis pas abonné
+                                final bool isLocked = isCreator && isPostPremium && !isMyOwnPost && !_subscribedCreatorIds.contains(creatorId);
 
                                 return GestureDetector(
                                   onTap: () {

@@ -4,6 +4,7 @@ import 'package:device_preview/device_preview.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/gestures.dart';
+import 'package:hive_flutter/hive_flutter.dart'; // ✅ 1. AJOUT DE L'IMPORT HIVE
 
 import 'theme/app_theme.dart';
 import 'screens/users/splash/splash_screen.dart';
@@ -14,10 +15,16 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 RealtimeChannel? _callChannel;
 
 Future<void> main() async {
+  // 2. Initialisation obligatoire de Flutter
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 3. Initialisation de Hive (Base de données locale ultra-rapide) ✅ NOUVEAU
+  await Hive.initFlutter();
+
+  // 4. Chargement des variables d'environnement
   await dotenv.load(fileName: ".env");
 
+  // 5. Initialisation de Supabase
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL']!,
     anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
@@ -47,7 +54,6 @@ Future<void> main() async {
               column: 'receiver_id',
               value: currentUserId,
             ),
-            // ✅ AJOUT DE 'async' ICI pour pouvoir faire une requête à la BDD
             callback: (payload) async {
               print("📩 [MAIN DIAGNOSTIC] 🚨 ÉVÉNEMENT REÇU ! Données brutes : ${payload.newRecord}");
               
@@ -58,12 +64,10 @@ Future<void> main() async {
               if (callerId != currentUserId && status == 'ongoing') {
                 print("🔔 [MAIN DIAGNOSTIC] SUCCÈS ! Appel entrant détecté de : $callerId");
                 
-                // ✅ 1. RÉCUPÉRER LE VRAI NOM ET L'AVATAR DE L'APPELANT
                 String displayName = "Utilisateur inconnu";
                 String? displayAvatar;
 
                 try {
-                  // ⚠️ ATTENTION : Remplace 'users' par le vrai nom de ta table si elle s'appelle 'profiles' ou 'creators'
                   final response = await supabase
                       .from('profiles') 
                       .select('full_name, username, avatar_url')
@@ -77,14 +81,13 @@ Future<void> main() async {
                   print("⚠️ [MAIN DIAGNOSTIC] Erreur récupération nom appelant : $e");
                 }
 
-                // ✅ 2. OUVRIR L'ÉCRAN AVEC LES VRAIES INFOS
                 navigatorKey.currentState?.push(
                   MaterialPageRoute(
                     builder: (context) => IncomingCallScreen(
                       callId: newCall['id'].toString(),
                       callerId: callerId,
-                      callerName: displayName, // ✅ VRAI NOM ICI (plus "Appel entrant...")
-                      callerAvatar: displayAvatar, // ✅ VRAI AVATAR ICI
+                      callerName: displayName,
+                      callerAvatar: displayAvatar,
                     ),
                   ),
                 );

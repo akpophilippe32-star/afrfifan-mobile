@@ -1,84 +1,112 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter/foundation.dart';
 
 class OfflineManager {
-  // Noms de nos "boîtes" (tables) Hive
   static const String _recentVideosBoxName = 'recent_videos';
-  static const String _downloadedVideosBoxName = 'downloaded_videos';
+  static const String _downloadedPostsBoxName = 'downloaded_posts'; // ✅ Nouvelle boîte dédiée
 
-  /// 1. Sauvegarder une vidéo dans l'historique des 10 dernières vues
+  /// 1. Sauvegarder dans l'historique des 10 dernières vues
   static Future<void> saveViewedVideo(Map<String, dynamic> videoData) async {
-    final box = await Hive.openBox(_recentVideosBoxName);
-    
-    // On récupère la liste actuelle
-    List<dynamic> videos = box.values.toList();
-    
-    // On retire la vidéo si elle existe déjà (pour éviter les doublons et la mettre en premier)
-    videos.removeWhere((v) => v['id'] == videoData['id']);
-    
-    // On l'ajoute au tout début de la liste
-    videos.insert(0, videoData);
-    
-    // On garde STRICTEMENT les 10 dernières vidéos pour ne pas surcharger la mémoire
-    if (videos.length > 10) {
-      videos = videos.sublist(0, 10);
-    }
-    
-    // On sauvegarde la nouvelle liste dans Hive
-    await box.clear();
-    await box.addAll(videos);
-  }
-
-  /// 2. Récupérer les vidéos récentes pour l'affichage hors ligne
-  static Future<List<Map<String, dynamic>>> getRecentVideos() async {
-    final box = await Hive.openBox(_recentVideosBoxName);
-    // On retourne la liste telle quelle (la plus récente est déjà à l'index 0)
-    return List<Map<String, dynamic>>.from(box.values.toList());
-  }
-
-  /// 3. Télécharger la vidéo dans le dossier PRIVÉ de l'application
-  /// Retourne le chemin local du fichier si réussi, ou null si échec.
-  static Future<String?> downloadVideoForOffline(String videoId, String videoUrl) async {
     try {
-      // flutter_cache_manager télécharge le fichier et le stocke dans un dossier caché du système
-      final fileInfo = await DefaultCacheManager().getFileFromCache(videoUrl);
+      final box = await Hive.openBox(_recentVideosBoxName);
+      List<dynamic> videos = box.values.toList();
+      final String currentId = videoData['id']?.toString() ?? '';
+      videos.removeWhere((v) => v['id'].toString() == currentId);
+      videos.insert(0, videoData);
+      if (videos.length > 10) videos = videos.sublist(0, 10);
+      await box.clear();
+      await box.addAll(videos);
+    } catch (e) {
+      debugPrint('❌ [HIVE] Erreur saveViewedVideo: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getRecentVideos() async {
+    try {
+      final box = await Hive.openBox(_recentVideosBoxName);
+      List<Map<String, dynamic>> result = [];
+      for (var item in box.values.toList()) {
+        if (item is Map) {
+          Map<String, dynamic> cleanMap = {};
+          item.forEach((key, value) => cleanMap[key.toString()] = value);
+          result.add(cleanMap);
+        }
+      }
+      return result;
+    } catch (e) {
+      debugPrint('❌ [HIVE] Erreur getRecentVideos: $e');
+      return [];
+    }
+  }
+
+  /// 3. ✅ NOUVEAU : Télécharger et sauvegarder le post COMPLET avec le chemin local
+  static Future<String?> downloadVideoForOffline(String videoId, String videoUrl, Map<String, dynamic> postData) async {
+    try {
+      final String cleanId = videoId.toString().trim();
+      debugPrint('💾 [DOWNLOAD] Début téléchargement pour ID: $cleanId');
       
+      final fileInfo = await DefaultCacheManager().getFileFromCache(videoUrl);
       final String localPath;
+      
       if (fileInfo != null) {
         localPath = fileInfo.file.path;
+        debugPrint('ℹ️ [DOWNLOAD] Déjà en cache: $localPath');
       } else {
-        // Si pas en cache, on le télécharge
+        debugPrint('⬇️ [DOWNLOAD] Téléchargement depuis le réseau...');
         final file = await DefaultCacheManager().getSingleFile(videoUrl);
         localPath = file.path;
+        debugPrint('✅ [DOWNLOAD] Téléchargement réussi: $localPath');
       }
       
-      // On sauvegarde le lien entre l'ID de la vidéo et son chemin local dans Hive
-      final downloadBox = await Hive.openBox(_downloadedVideosBoxName);
-      await downloadBox.put(videoId, localPath);
+      // On sauvegarde TOUTES les données du post + le chemin local dans la boîte dédiée
+      final downloadBox = await Hive.openBox(_downloadedPostsBoxName);
+      final enrichedPost = {
+        ...postData,
+        'id': cleanId, // Force l'ID propre
+        'localPath': localPath,
+      };
+      
+      await downloadBox.put(cleanId, enrichedPost);
+      debugPrint('💾 [HIVE] Post sauvegardé avec succès dans downloaded_posts pour: $cleanId');
       
       return localPath; 
     } catch (e) {
-      print('❌ Erreur téléchargement vidéo hors ligne: $e');
+      debugPrint('❌ [DOWNLOAD] Erreur critique: $e');
       return null;
     }
   }
 
-  /// 4. Vérifier si une vidéo est déjà téléchargée et récupérer son chemin local
-  static Future<String?> getLocalVideoPath(String videoId) async {
-    final box = await Hive.openBox(_downloadedVideosBoxName);
-    return box.get(videoId);
+  /// 4. ✅ NOUVEAU : Récupérer TOUS les posts téléchargés (pour l'écran Téléchargé)
+  static Future<List<Map<String, dynamic>>> getDownloadedPosts() async {
+    try {
+      final box = await Hive.openBox(_downloadedPostsBoxName);
+      List<Map<String, dynamic>> result = [];
+      
+      for (var item in box.values.toList()) {
+        if (item is Map) {
+          Map<String, dynamic> cleanMap = {};
+          item.forEach((key, value) => cleanMap[key.toString()] = value);
+          result.add(cleanMap);
+        }
+      }
+      debugPrint('✅ [HIVE] ${result.length} posts téléchargés trouvés.');
+      return result;
+    } catch (e) {
+      debugPrint('❌ [HIVE] Erreur getDownloadedPosts: $e');
+      return [];
+    }
   }
 
-  /// 5. (Optionnel) Supprimer une vidéo téléchargée pour libérer de l'espace
-  static Future<void> deleteDownloadedVideo(String videoId) async {
-    final box = await Hive.openBox(_downloadedVideosBoxName);
-    final localPath = box.get(videoId);
-    
-    if (localPath != null) {
-      // Supprimer le fichier du système de fichiers
-      // Note: DefaultCacheManager gère aussi le nettoyage automatique, 
-      // mais ceci force la suppression de notre référence
-      await box.delete(videoId);
+  /// 5. Supprimer un post téléchargé
+  static Future<void> deleteDownloadedPost(String videoId) async {
+    try {
+      final String cleanId = videoId.toString().trim();
+      final box = await Hive.openBox(_downloadedPostsBoxName);
+      await box.delete(cleanId);
+      debugPrint('🗑️ [HIVE] Post supprimé de downloaded_posts: $cleanId');
+    } catch (e) {
+      debugPrint('❌ [HIVE] Erreur deleteDownloadedPost: $e');
     }
   }
 }

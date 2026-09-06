@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http; // ✅ Pour télécharger les URLs
-import 'dart:io'; // ✅ Pour créer des fichiers temporaires
-import 'package:path_provider/path_provider.dart'; // ✅ Pour les fichiers temporaires
+import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import '../screens/users/create/models/draft_post.dart';
 
 class ContentService {
@@ -18,18 +18,47 @@ class ContentService {
 
       final bytes = await imageFile.readAsBytes();
 
+      // ✅ CORRECTION : Bucket 'post-media' et contentType 'image/jpeg'
       await _supabase.storage
-          .from('post-images')
-          .uploadBinary(filePath, bytes);
+          .from('post-media')
+          .uploadBinary(
+            filePath, 
+            bytes, 
+            fileOptions: const FileOptions(contentType: 'image/jpeg', upsert: true)
+          );
 
-      final publicUrl = _supabase.storage
-          .from('post-images')
-          .getPublicUrl(filePath);
-
+      final publicUrl = _supabase.storage.from('post-media').getPublicUrl(filePath);
       debugPrint('✅ Image uploadée : $publicUrl');
       return publicUrl;
     } catch (e) {
       debugPrint('❌ Erreur upload image: $e');
+      return null;
+    }
+  }
+
+  /// ✅ Upload une vidéo (Compatible Web & Mobile)
+  Future<String?> uploadVideo(XFile videoFile, String userId) async {
+    try {
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'post_${userId}_$timestamp.mp4';
+      final filePath = '$userId/$fileName';
+
+      final bytes = await videoFile.readAsBytes();
+
+      // ✅ CORRECTION : Bucket 'post-media' (et non 'post-images')
+      await _supabase.storage
+          .from('post-media')
+          .uploadBinary(
+            filePath, 
+            bytes,
+            fileOptions: const FileOptions(contentType: 'video/mp4', upsert: true),
+          );
+
+      final publicUrl = _supabase.storage.from('post-media').getPublicUrl(filePath);
+      debugPrint('✅ Vidéo uploadée : $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      debugPrint('❌ Erreur upload vidéo: $e');
       return null;
     }
   }
@@ -46,12 +75,13 @@ class ContentService {
 
       await _supabase.storage
           .from('post-music')
-          .uploadBinary(filePath, bytes);
+          .uploadBinary(
+            filePath, 
+            bytes,
+            fileOptions: FileOptions(contentType: 'audio/mpeg', upsert: true),
+          );
 
-      final publicUrl = _supabase.storage
-          .from('post-music')
-          .getPublicUrl(filePath);
-
+      final publicUrl = _supabase.storage.from('post-music').getPublicUrl(filePath);
       debugPrint('✅ Musique uploadée : $publicUrl');
       return publicUrl;
     } catch (e) {
@@ -60,7 +90,7 @@ class ContentService {
     }
   }
 
-  /// Publie un post (Compatible Web & Mobile + URLs IA)
+  /// Publie un post (Compatible Web & Mobile + URLs IA + VIDÉOS)
   Future<String?> publishPost(DraftPost draft) async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
@@ -69,41 +99,66 @@ class ContentService {
     }
 
     try {
-      debugPrint(' Upload de ${draft.mediaPaths.length} média(s)...');
-      final List<String> imageUrls = [];
+      final List<String> mediaUrls = [];
+      final bool isVideo = draft.postType == 'video';
 
-      for (final mediaPath in draft.mediaPaths) {
-        XFile xFile;
-        
-        // ✅ DÉTECTION URL vs FICHIER LOCAL
-        if (mediaPath.startsWith('http://') || mediaPath.startsWith('https://')) {
-          // C'est une URL (ex: image IA de Pollinations)
-          debugPrint('🔽 Téléchargement de l\'image depuis URL...');
-          
-          final response = await http.get(Uri.parse(mediaPath));
-          if (response.statusCode != 200) {
-            debugPrint('❌ Échec téléchargement URL');
-            return null;
+      // ✅ PRIORITÉ 1 : Utiliser draft.mediaFiles si disponible (plus fiable pour le Web/blob)
+      if (draft.mediaFiles != null && draft.mediaFiles!.isNotEmpty) {
+        debugPrint('📤 Upload de ${draft.mediaFiles!.length} fichier(s) depuis mediaFiles...');
+        for (final xFile in draft.mediaFiles!) {
+          String? url;
+          if (isVideo) {
+            url = await uploadVideo(xFile, user.id);
+          } else {
+            url = await uploadImage(xFile, user.id);
           }
           
-          // Créer un fichier temporaire
-          final tempDir = await getTemporaryDirectory();
-          final tempFile = File('${tempDir.path}/ai_image_${DateTime.now().millisecondsSinceEpoch}.jpg');
-          await tempFile.writeAsBytes(response.bodyBytes);
+          if (url != null) {
+            mediaUrls.add(url);
+          } else {
+            debugPrint('❌ Échec upload média');
+            return null;
+          }
+        }
+      } 
+      // ✅ PRIORITÉ 2 : Fallback sur draft.mediaPaths (pour compatibilité IA ou anciens flux)
+      else if (draft.mediaPaths.isNotEmpty) {
+        debugPrint('📤 Upload de ${draft.mediaPaths.length} média(s) depuis mediaPaths...');
+        for (final mediaPath in draft.mediaPaths) {
+          XFile xFile;
           
-          xFile = XFile(tempFile.path);
-          debugPrint('✅ Image téléchargée dans fichier temporaire');
-        } else {
-          // C'est un fichier local
-          xFile = XFile(mediaPath);
+          if (mediaPath.startsWith('http://') || mediaPath.startsWith('https://') || mediaPath.startsWith('blob:')) {
+            debugPrint('🔽 Téléchargement depuis URL: $mediaPath');
+            final response = await http.get(Uri.parse(mediaPath));
+            if (response.statusCode != 200) {
+              debugPrint('❌ Échec téléchargement URL');
+              return null;
+            }
+            
+            final tempDir = await getTemporaryDirectory();
+            final extension = isVideo ? 'mp4' : 'jpg';
+            final tempFile = File('${tempDir.path}/media_${DateTime.now().millisecondsSinceEpoch}.$extension');
+            await tempFile.writeAsBytes(response.bodyBytes);
+            
+            xFile = XFile(tempFile.path);
+          } else {
+            xFile = XFile(mediaPath);
+          }
+          
+          String? url;
+          if (isVideo) {
+            url = await uploadVideo(xFile, user.id);
+          } else {
+            url = await uploadImage(xFile, user.id);
+          }
+          
+          if (url != null) {
+            mediaUrls.add(url);
+          } else {
+            debugPrint('❌ Échec upload média');
+            return null;
+          }
         }
-        
-        final url = await uploadImage(xFile, user.id);
-        if (url == null) {
-          debugPrint('❌ Échec upload média');
-          return null;
-        }
-        imageUrls.add(url);
       }
 
       String? musicUrl;
@@ -113,15 +168,16 @@ class ContentService {
         musicUrl = await uploadMusic(musicXFile, user.id);
       }
 
-      debugPrint('💾 Création du post...');
+      debugPrint('💾 Création du post en base de données...');
       final postData = {
         'user_id': user.id,
-        'media_url': imageUrls.first,
+        'media_url': mediaUrls.isNotEmpty ? mediaUrls.first : null,
         'media_type': draft.postType,
         'content': draft.caption,
         'caption': draft.caption,
-        'music_url': musicUrl,
+        'music_url': musicUrl ?? draft.musicUrl,
         'slide_duration': draft.slideDuration,
+        'background_color': draft.backgroundColor,
       };
 
       final postResponse = await _supabase
@@ -133,12 +189,12 @@ class ContentService {
       final postId = postResponse['id'] as String;
       debugPrint('✅ Post créé avec ID: $postId');
 
-      if (draft.isSlideshow && imageUrls.length > 1) {
+      if (draft.isSlideshow && mediaUrls.length > 1) {
         final mediaList = <Map<String, dynamic>>[];
-        for (int i = 0; i < imageUrls.length; i++) {
+        for (int i = 0; i < mediaUrls.length; i++) {
           mediaList.add({
             'post_id': postId,
-            'media_url': imageUrls[i],
+            'media_url': mediaUrls[i],
             'media_order': i,
           });
         }
@@ -147,12 +203,12 @@ class ContentService {
 
       return postId;
     } catch (e) {
-      debugPrint(' Erreur publication: $e');
+      debugPrint('❌ Erreur publication: $e');
       return null;
     }
   }
 
-  /// ✅ NOUVEAU : Publie une Story (Compatible Web & Mobile)
+  /// Publie une Story (Compatible Web & Mobile)
   Future<String?> publishStory({
     required XFile mediaFile,
     String? textContent,
@@ -160,9 +216,19 @@ class ContentService {
     required String userId,
   }) async {
     try {
-      String mediaType = 'image';
-      
-      final mediaUrl = await uploadImage(mediaFile, userId);
+      final isVideo = mediaFile.name.toLowerCase().endsWith('.mp4') || 
+                      mediaFile.name.toLowerCase().endsWith('.mov') ||
+                      mediaFile.name.toLowerCase().endsWith('.webm');
+                      
+      String mediaType = isVideo ? 'video' : 'image';
+      String? mediaUrl;
+
+      if (isVideo) {
+        mediaUrl = await uploadVideo(mediaFile, userId);
+      } else {
+        mediaUrl = await uploadImage(mediaFile, userId);
+      }
+
       if (mediaUrl == null) return null;
 
       final storyData = {
@@ -182,7 +248,7 @@ class ContentService {
       debugPrint('✅ Story publiée avec ID: ${response['id']}');
       return response['id'] as String;
     } catch (e) {
-      debugPrint(' Erreur publication story: $e');
+      debugPrint('❌ Erreur publication story: $e');
       return null;
     }
   }
@@ -216,19 +282,20 @@ class ContentService {
 
       final mediaList = List<Map<String, dynamic>>.from(mediaResponse);
 
-      final allImageUrls = <String>[
+      final allMediaUrls = <String>[
         if (postResponse['media_url'] != null) postResponse['media_url'] as String,
         ...mediaList.map((m) => m['media_url'] as String),
       ];
 
-      for (final url in allImageUrls.toSet()) {
+      // ✅ CORRECTION : Utiliser 'post-media' pour la suppression
+      for (final url in allMediaUrls.toSet()) {
         try {
-          final filePath = _extractFilePathFromUrl(url, 'post-images');
+          final filePath = _extractFilePathFromUrl(url, 'post-media');
           if (filePath != null) {
-            await _supabase.storage.from('post-images').remove([filePath]);
+            await _supabase.storage.from('post-media').remove([filePath]);
           }
         } catch (e) {
-          debugPrint('⚠️ Erreur suppression fichier image: $e');
+          debugPrint('⚠️ Erreur suppression fichier média: $e');
         }
       }
 
@@ -242,19 +309,12 @@ class ContentService {
             await _supabase.storage.from('post-music').remove([musicPath]);
           }
         } catch (e) {
-          debugPrint('️ Erreur suppression fichier musique: $e');
+          debugPrint('⚠️ Erreur suppression fichier musique: $e');
         }
       }
 
-      await _supabase
-          .from('post_media')
-          .delete()
-          .eq('post_id', postId);
-
-      await _supabase
-          .from('posts')
-          .delete()
-          .eq('id', postId);
+      await _supabase.from('post_media').delete().eq('post_id', postId);
+      await _supabase.from('posts').delete().eq('id', postId);
 
       debugPrint('✅ Post supprimé avec succès');
       return true;

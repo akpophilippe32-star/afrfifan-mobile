@@ -6,7 +6,8 @@ import 'subscribers_tab.dart';
 import 'stats_tab.dart';
 import 'settings_tab.dart';
 import 'tips_tab.dart';
-import 'go_live_screen.dart'; // ✅ AJOUTÉ : Import de l'écran pour lancer le Live
+import 'go_live_screen.dart'; 
+import 'creator_shop_tab.dart'; // ✅ AJOUTÉ : Import du nouvel onglet Boutique
 
 class CreatorDashboardScreen extends StatefulWidget {
   const CreatorDashboardScreen({super.key});
@@ -53,9 +54,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     Navigator.pop(context); // Ferme le drawer après le clic
   }
 
-  // ✅ NOUVEAU : Méthode pour ouvrir l'écran du Live
   void _goLive() {
-    Navigator.pop(context); // Ferme le menu
+    Navigator.pop(context); 
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const GoLiveScreen()),
@@ -84,20 +84,18 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       body: IndexedStack(
         index: _selectedIndex,
         children: const [
-          OverviewTab(),
-          WalletTab(),
-          SubscribersTab(),
-          StatsTab(),
-          SettingsTab(),
-          TipsTab(),
+          OverviewTab(),       // Index 0
+          WalletTab(),         // Index 1
+          SubscribersTab(),    // Index 2
+          StatsTab(),          // Index 3
+          SettingsTab(),       // Index 4
+          TipsTab(),           // Index 5
+          CreatorShopTab(),    // ✅ Index 6 : NOUVEL ONGLET BOUTIQUE
         ],
       ),
     );
   }
 
-  // ==========================================
-  // WIDGETS UTILITAIRES (Drawer)
-  // ==========================================
   Widget _buildDrawer() {
     return Drawer(
       backgroundColor: const Color(0xFF1A1A1A),
@@ -140,11 +138,10 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                 _buildDrawerItem(3, Icons.bar_chart_outlined, 'Statistiques'),
                 _buildDrawerItem(4, Icons.settings_outlined, 'Paramètres'),
                 _buildDrawerItem(5, Icons.local_cafe, 'Pourboires'),
+                _buildDrawerItem(6, Icons.storefront_outlined, 'Ma Boutique'), // ✅ AJOUTÉ ICI
                 
-                // ✅ SÉPARATEUR POUR METTRE EN VALEUR L'ACTION LIVE
                 const Divider(height: 32, color: Colors.white24, indent: 20, endIndent: 20),
                 
-                // ✅ BOUTON "LANCER UN LIVE" (Style spécial pour attirer l'œil)
                 ListTile(
                   leading: const Icon(Icons.videocam, color: Colors.redAccent, size: 28),
                   title: const Text(
@@ -183,7 +180,16 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   }
 
   String _getAppBarTitle() {
-    const titles = ['Vue d\'ensemble', 'Portefeuille', 'Abonnés', 'Statistiques', 'Paramètres', 'Pourboires'];
+    // ✅ MIS À JOUR AVEC "Ma Boutique" à l'index 6
+    const titles = [
+      'Vue d\'ensemble', 
+      'Portefeuille', 
+      'Abonnés', 
+      'Statistiques', 
+      'Paramètres', 
+      'Pourboires',
+      'Ma Boutique'
+    ];
     return titles[_selectedIndex];
   }
 }

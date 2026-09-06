@@ -1,25 +1,25 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:video_player/video_player.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/tip_dialog.dart';
 import '../../../widgets/report_dialog.dart';
-import '../../../services/share_service.dart'; 
+import '../../../services/share_service.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final List<Map<String, dynamic>> posts;
   final int initialIndex;
   final String creatorId;
-  final String creatorName; // ✅ AJOUTÉ
+  final String creatorName;
 
   const PostDetailScreen({
     super.key,
     required this.posts,
     required this.initialIndex,
     required this.creatorId,
-    required this.creatorName, // ✅ AJOUTÉ
+    required this.creatorName,
   });
-// ... (le reste de la classe reste pareil)
 
   @override
   State<PostDetailScreen> createState() => _PostDetailScreenState();
@@ -30,9 +30,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final supabase = Supabase.instance.client;
   String? _currentUserId;
   String _currentUserName = 'Utilisateur';
-  
+
   Set<String> _likedPostIds = {};
   bool _isFollowing = false;
+
+  // Stockage des contrôleurs vidéo par postId
+  final Map<String, VideoPlayerController> _videoControllers = {};
 
   @override
   void initState() {
@@ -45,7 +48,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    for (var controller in _videoControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  // Callback pour recevoir le contrôleur vidéo
+  void _onVideoControllerReady(VideoPlayerController controller, String postId) {
+    setState(() {
+      _videoControllers[postId] = controller;
+    });
   }
 
   Future<void> _loadUserData() async {
@@ -90,7 +103,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         setState(() => _likedPostIds.add(postId));
       }
       await supabase.from('posts').update({'likes_count': newLikes}).eq('id', postId);
-      
+
       setState(() {
         if (postIndex < widget.posts.length) {
           widget.posts[postIndex]['likes_count'] = newLikes;
@@ -211,19 +224,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 
-    void _openTipDialog() {
-    // ✅ Utilise widget.creatorName ici aussi
+  void _openTipDialog() {
     showDialog(
-      context: context, 
+      context: context,
       builder: (context) => TipDialog(
-        creatorId: widget.creatorId, 
-        creatorName: widget.creatorName
-      )
+        creatorId: widget.creatorId,
+        creatorName: widget.creatorName,
+      ),
     );
   }
 
   void _handleShare(Map<String, dynamic> post) {
-    // Ici tu pourras appeler ton share_service
+    // Utilisation de votre service de partage
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lien du post copié !'), backgroundColor: Colors.green));
   }
 
@@ -233,20 +245,81 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     return count.toString();
   }
 
+  // ─── WIDGET DE MÉDIA ──────────────────────────────────────
+
+  Widget _buildMediaWidget(Map<String, dynamic> post, String postId) {
+    final mediaType = post['media_type']?.toString() ?? 'image';
+    final mediaUrl = post['media_url']?.toString();
+    final caption = post['caption'] ?? post['content'] ?? post['title'] ?? '';
+    final backgroundColorHex = post['background_color'];
+
+    // ─── TEXTE ──────────────────────────────────────────────
+    if (mediaType == 'text') {
+      Color getBgColor() {
+        if (backgroundColorHex == null) return Colors.grey.shade800;
+        try {
+          String hex = backgroundColorHex.replaceAll('#', '0xFF');
+          return Color(int.parse(hex));
+        } catch (e) {
+          return Colors.grey.shade800;
+        }
+      }
+      return Container(
+        color: getBgColor(),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Text(
+              caption.isEmpty ? '📝 (Contenu texte vide)' : caption,
+              style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ─── VIDÉO ──────────────────────────────────────────────
+    if (mediaType == 'video' && mediaUrl != null && mediaUrl.isNotEmpty) {
+      return _PostVideoPlayer(
+        mediaUrl: mediaUrl,
+        postId: postId,
+        onControllerReady: _onVideoControllerReady,
+      );
+    }
+
+    // ─── IMAGE ──────────────────────────────────────────────
+    if (mediaUrl != null && mediaUrl.isNotEmpty) {
+      return Image.network(
+        mediaUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          color: Colors.grey.shade900,
+          child: const Center(child: Icon(Icons.image_not_supported, color: Colors.white54, size: 50)),
+        ),
+      );
+    }
+
+    // Fallback
+    return Container(
+      color: Colors.grey.shade900,
+      child: const Center(child: Icon(Icons.image_not_supported, color: Colors.white54, size: 50)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: PageView.builder(
         controller: _pageController,
-        scrollDirection: Axis.vertical, // ✅ DÉFILEMENT VERTICAL COMME LE HOME
+        scrollDirection: Axis.vertical,
         itemCount: widget.posts.length,
         itemBuilder: (context, index) {
           final post = widget.posts[index];
           final postId = post['id']?.toString() ?? '';
-          final caption = post['caption'] ?? post['title'] ?? '';
-          final mediaUrl = post['media_url'];
-          final creatorName = widget.creatorName; 
+          final caption = post['caption'] ?? post['content'] ?? post['title'] ?? '';
+          final mediaType = post['media_type']?.toString() ?? 'image';
           final likesCount = post['likes_count'] ?? 0;
           final commentsCount = post['comments_count'] ?? 0;
           final isLiked = _likedPostIds.contains(postId);
@@ -255,30 +328,29 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           return Stack(
             fit: StackFit.expand,
             children: [
-              // 1. IMAGE/VIDÉO DE FOND
-              if (mediaUrl != null && mediaUrl.toString().isNotEmpty)
-                Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54)))
-              else
-                Container(color: Colors.grey.shade900, child: const Center(child: Icon(Icons.image_not_supported, size: 50, color: Colors.white54))),
+              // ─── 1. MÉDIA ──────────────────────────────────────
+              _buildMediaWidget(post, postId),
 
-              // 2. DÉGRADÉ ÉCLAIRCI (Pour mieux voir le contenu) ✅
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.3), // ✅ Moins sombre en haut
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.8), // ✅ Sombre en bas pour lire le texte
-                    ],
+              // ─── 2. DÉGRADÉ (sauf pour les posts texte déjà colorés) ──
+              if (mediaType != 'text')
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.3),
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.8),
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              // 3. BOUTON RETOUR EN HAUT À GAUCHE
+              // ─── 3. BOUTON RETOUR ─────────────────────────────
               Positioned(
-                top: 40, left: 16,
+                top: 40,
+                left: 16,
                 child: GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: Container(
@@ -289,19 +361,39 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 ),
               ),
 
-              // 4. BLOC DROITE : BOUTONS D'ACTION VERTICAUX (Comme le Home) ✅
+              // ─── 4. BOUTONS DROITE ────────────────────────────
               Positioned(
-                right: 12, bottom: 100,
+                right: 12,
+                bottom: 100, // remonté pour la barre
                 child: Column(
                   children: [
-                    _buildSideButton(isLiked ? Icons.favorite : Icons.favorite_border, _formatCount(likesCount), () => _handleLike(postId, likesCount, index), iconColor: isLiked ? Colors.redAccent : Colors.white),
+                    _buildSideButton(
+                      isLiked ? Icons.favorite : Icons.favorite_border,
+                      _formatCount(likesCount),
+                      () => _handleLike(postId, likesCount, index),
+                      iconColor: isLiked ? Colors.redAccent : Colors.white,
+                    ),
                     const SizedBox(height: 18),
-                    _buildSideButton(Icons.chat_bubble_rounded, _formatCount(commentsCount), () => _openComments(postId, commentsCount, index)),
+                    _buildSideButton(
+                      Icons.chat_bubble_rounded,
+                      _formatCount(commentsCount),
+                      () => _openComments(postId, commentsCount, index),
+                    ),
                     const SizedBox(height: 18),
-_buildSideButton(Icons.local_cafe, 'Tip', () => _openTipDialog(), iconColor: Colors.orangeAccent),                    const SizedBox(height: 18),
-                    _buildSideButton(Icons.share, 'Partager', () => _handleShare(post), iconColor: Colors.white), // ✅ BOUTON PARTAGE
+                    _buildSideButton(
+                      Icons.local_cafe,
+                      'Tip',
+                      () => _openTipDialog(),
+                      iconColor: Colors.orangeAccent,
+                    ),
                     const SizedBox(height: 18),
-                    // Menu 3 points pour signaler ✅
+                    _buildSideButton(
+                      Icons.share,
+                      'Partager',
+                      () => _handleShare(post),
+                      iconColor: Colors.white,
+                    ),
+                    const SizedBox(height: 18),
                     PopupMenuButton<String>(
                       color: const Color(0xFF1A1A1A),
                       icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
@@ -311,39 +403,73 @@ _buildSideButton(Icons.local_cafe, 'Tip', () => _openTipDialog(), iconColor: Col
                         }
                       },
                       itemBuilder: (context) => [
-                        const PopupMenuItem<String>(value: 'report', child: Row(children: [Icon(Icons.flag_outlined, color: Colors.redAccent, size: 20), SizedBox(width: 12), Text('Signaler', style: TextStyle(color: Colors.white))])),
+                        const PopupMenuItem<String>(
+                          value: 'report',
+                          child: Row(children: [
+                            Icon(Icons.flag_outlined, color: Colors.redAccent, size: 20),
+                            SizedBox(width: 12),
+                            Text('Signaler', style: TextStyle(color: Colors.white)),
+                          ]),
+                        ),
                       ],
                     ),
                   ],
                 ),
               ),
 
-              // 5. BLOC GAUCHE : CRÉATEUR + LÉGENDE
+              // ─── 5. INFOS BAS GAUCHE ──────────────────────────
               Positioned(
-                left: 16, right: 80, bottom: 40,
+                left: 16,
+                right: 80,
+                bottom: 100, // remonté pour la barre
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Text('@$creatorName', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(
+                          '@${widget.creatorName}',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
                         const SizedBox(width: 10),
                         if (!_isFollowing)
                           GestureDetector(
                             onTap: _handleFollow,
-                            child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(20)), child: const Text('Suivre', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(20)),
+                              child: const Text(
+                                'Suivre',
+                                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ),
                           )
                         else
                           const Icon(Icons.check_circle, color: Colors.grey, size: 20),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text(caption.isEmpty ? '📝 (Pas de légende)' : caption, style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4)),
+                    Text(
+                      caption.isEmpty ? '📝 (Pas de légende)' : caption,
+                      style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+                    ),
                     const SizedBox(height: 8),
-                    Text('${createdAt.day}/${createdAt.month}/${createdAt.year}', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                    Text(
+                      '${createdAt.day}/${createdAt.month}/${createdAt.year}',
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                    ),
                   ],
                 ),
               ),
+
+              // ─── 6. BARRE DE CONTRÔLE VIDÉO (EN DERNIER) ──────
+              if (mediaType == 'video' && _videoControllers.containsKey(postId))
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _VideoControlsBar(controller: _videoControllers[postId]!),
+                ),
             ],
           );
         },
@@ -365,6 +491,228 @@ _buildSideButton(Icons.local_cafe, 'Tip', () => _openTipDialog(), iconColor: Col
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  WIDGET LECTEUR VIDÉO (UNIQUEMENT LA VIDÉO, SANS BARRE)
+// ═══════════════════════════════════════════════════════════════════
+class _PostVideoPlayer extends StatefulWidget {
+  final String mediaUrl;
+  final String postId;
+  final void Function(VideoPlayerController, String)? onControllerReady;
+
+  const _PostVideoPlayer({
+    required this.mediaUrl,
+    required this.postId,
+    this.onControllerReady,
+  });
+
+  @override
+  State<_PostVideoPlayer> createState() => _PostVideoPlayerState();
+}
+
+class _PostVideoPlayerState extends State<_PostVideoPlayer> {
+  VideoPlayerController? _controller;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPlayer();
+  }
+
+  Future<void> _initPlayer() async {
+    try {
+      _controller = VideoPlayerController.network(widget.mediaUrl);
+      await _controller!.initialize();
+      if (mounted) {
+        setState(() => _initialized = true);
+        _controller!.play();
+        _controller!.setLooping(true);
+        widget.onControllerReady?.call(_controller!, widget.postId);
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur init vidéo post ${widget.postId}: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    // Ne pas dispose ici, car le parent gère la durée de vie
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_initialized || _controller == null) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    return AspectRatio(
+      aspectRatio: _controller!.value.aspectRatio,
+      child: VideoPlayer(_controller!),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  WIDGET BARRE DE CONTRÔLE VIDÉO (AVEC MUTE ET VITESSE)
+// ═══════════════════════════════════════════════════════════════════
+class _VideoControlsBar extends StatefulWidget {
+  final VideoPlayerController controller;
+  const _VideoControlsBar({required this.controller});
+
+  @override
+  State<_VideoControlsBar> createState() => _VideoControlsBarState();
+}
+
+class _VideoControlsBarState extends State<_VideoControlsBar> {
+  bool _isPlaying = false;
+  bool _isMuted = false;
+  double _speed = 1.0;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_update);
+    _update();
+  }
+
+  void _update() {
+    if (!mounted) return;
+    setState(() {
+      _isPlaying = widget.controller.value.isPlaying;
+      _position = widget.controller.value.position;
+      _duration = widget.controller.value.duration;
+      _isMuted = widget.controller.value.volume == 0;
+    });
+  }
+
+  void _togglePlayPause() {
+    if (_isPlaying) {
+      widget.controller.pause();
+    } else {
+      widget.controller.play();
+    }
+  }
+
+  void _toggleMute() {
+    setState(() {
+      _isMuted = !_isMuted;
+      widget.controller.setVolume(_isMuted ? 0.0 : 1.0);
+    });
+  }
+
+  void _changeSpeed() {
+    setState(() {
+      if (_speed == 1.0) _speed = 1.5;
+      else if (_speed == 1.5) _speed = 2.0;
+      else _speed = 1.0;
+      widget.controller.setPlaybackSpeed(_speed);
+    });
+  }
+
+  String _formatDuration(Duration d) {
+    final mins = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final secs = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return "$mins:$secs";
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_update);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Colors.black.withOpacity(0.85), Colors.transparent],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // ── Play/Pause + Temps ──
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: _togglePlayPause,
+                    child: Icon(
+                      _isPlaying ? Icons.pause : Icons.play_arrow,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              // ── Mute + Vitesse ──
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: _toggleMute,
+                    child: Icon(
+                      _isMuted ? Icons.volume_off : Icons.volume_up,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: _changeSpeed,
+                    child: Text(
+                      '${_speed}x',
+                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: Colors.white.withOpacity(0.3),
+              thumbColor: Colors.white,
+              overlayColor: Colors.white.withOpacity(0.2),
+            ),
+            child: Slider(
+              value: _duration.inMilliseconds > 0
+                  ? _position.inMilliseconds / _duration.inMilliseconds
+                  : 0.0,
+              onChanged: (value) {
+                final seekTo = Duration(
+                  milliseconds: (value * _duration.inMilliseconds).round(),
+                );
+                widget.controller.seekTo(seekTo);
+                setState(() {
+                  _position = seekTo;
+                });
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

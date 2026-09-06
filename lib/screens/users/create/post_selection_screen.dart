@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -6,19 +7,20 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/content_service.dart';
 import '../create/models/draft_post.dart';
+import '../../../services/video_compression_service.dart'; // ✅ AJOUTÉ
 
 class PostSelectionScreen extends StatefulWidget {
   final String mediaPath;
   final String mediaType;
   final XFile? xFile; 
-  final Map<String, String>? selectedSound; // ✅ AJOUTÉ : Pour recevoir le son choisi
+  final Map<String, String>? selectedSound;
 
   const PostSelectionScreen({
     super.key,
     required this.mediaPath,
     required this.mediaType,
     this.xFile,
-    this.selectedSound, // ✅ AJOUTÉ
+    this.selectedSound,
   });
 
   @override
@@ -30,6 +32,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
   Uint8List? _imageBytes;
   bool _isLoading = true;
   bool _isPublishing = false;
+  bool _isCompressing = false; // ✅ AJOUTÉ : Pour afficher un loader spécifique à la compression
 
   @override
   void initState() {
@@ -41,15 +44,20 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     setState(() => _isLoading = true);
     try {
       if (widget.mediaType == 'video') {
-        _videoController = VideoPlayerController.network(widget.mediaPath)
-          ..initialize().then((_) {
-            if (mounted) {
-              setState(() {});
-              _videoController?.play();
-              _videoController?.setLooping(true);
-              setState(() => _isLoading = false);
-            }
-          });
+        if (kIsWeb || widget.mediaPath.startsWith('http') || widget.mediaPath.startsWith('blob')) {
+          _videoController = VideoPlayerController.network(widget.mediaPath);
+        } else {
+          _videoController = VideoPlayerController.file(File(widget.mediaPath));
+        }
+        
+        await _videoController!.initialize();
+        
+        if (mounted) {
+          setState(() {});
+          _videoController?.play();
+          _videoController?.setLooping(true);
+          setState(() => _isLoading = false);
+        }
       } else {
         if (widget.xFile != null) {
           _imageBytes = await widget.xFile!.readAsBytes();
@@ -68,6 +76,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     super.dispose();
   }
 
+  // ✅ VERSION AVEC COMPRESSION VIDÉO POUR LES STORIES
   Future<void> _publishToStory() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -80,10 +89,28 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       return;
     }
 
-    setState(() => _isPublishing = true);
+    setState(() {
+      _isPublishing = true;
+      _isCompressing = widget.mediaType == 'video';
+    });
+
     try {
+      XFile fileToUpload = widget.xFile!;
+      
+      // ✅ COMPRESSION SI C'EST UNE VIDÉO
+      if (widget.mediaType == 'video') {
+        final compressedFile = await videoCompressionService.compressVideo(fileToUpload.path);
+        if (compressedFile != null) {
+          fileToUpload = XFile(compressedFile.path);
+        } else {
+          setState(() { _isPublishing = false; _isCompressing = false; });
+          _showError('Échec de la compression vidéo.');
+          return;
+        }
+      }
+
       final storyId = await contentService.publishStory(
-        mediaFile: widget.xFile!,
+        mediaFile: fileToUpload, // ✅ On envoie le fichier compressé
         userId: user.id,
       );
 
@@ -98,10 +125,14 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       debugPrint('❌ Erreur: $e');
       _showError('Une erreur est survenue');
     } finally {
-      if (mounted) setState(() => _isPublishing = false);
+      if (mounted) setState(() {
+        _isPublishing = false;
+        _isCompressing = false;
+      });
     }
   }
 
+  // ✅ VERSION AVEC COMPRESSION VIDÉO POUR LE FEED
   Future<void> _publishToFeed({String? title, String? caption}) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -109,22 +140,51 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       return;
     }
 
-    setState(() => _isPublishing = true);
+    if (widget.xFile == null) {
+      _showError('Erreur : Fichier média introuvable');
+      return;
+    }
+
+    setState(() {
+      _isPublishing = true;
+      _isCompressing = widget.mediaType == 'video'; // Active le loader de compression si c'est une vidéo
+    });
+
     try {
       final draft = DraftPost();
-      draft.postType = widget.mediaType == 'video' ? 'video' : 'image';
-      draft.mediaPaths = [widget.mediaPath];
+      draft.postType = widget.mediaType;
       draft.caption = caption ?? '';
       
-      // ✅ AJOUT : On sauvegarde l'URL du son dans le brouillon du post
       if (widget.selectedSound != null) {
         draft.musicUrl = widget.selectedSound!['url'];
       }
-
       if (title != null && title.isNotEmpty) {
         draft.caption = '$title\n\n${draft.caption}';
       }
 
+      // ✅ 1. COMPRESSION (Uniquement pour les vidéos)
+      XFile fileToUpload = widget.xFile!;
+      if (widget.mediaType == 'video') {
+        debugPrint('🎬 Début de la compression vidéo...');
+        final compressedFile = await videoCompressionService.compressVideo(
+          fileToUpload.path,
+        );
+        
+        if (compressedFile == null) {
+          setState(() { _isPublishing = false; _isCompressing = false; });
+          _showError('Échec de la compression vidéo. Réessayez.');
+          return;
+        }
+        
+        // On remplace le fichier original par le fichier compressé
+        fileToUpload = XFile(compressedFile.path);
+        debugPrint('✅ Vidéo compressée avec succès !');
+      }
+
+      // ✅ 2. PRÉPARATION DU DRAFT AVEC LE FICHIER (COMPRESSÉ OU NON)
+      draft.mediaFiles = [fileToUpload]; 
+
+      // ✅ 3. UPLOAD VERS SUPABASE
       final postId = await contentService.publishPost(draft);
 
       if (postId != null && mounted) {
@@ -136,9 +196,12 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       }
     } catch (e) {
       debugPrint('❌ Erreur: $e');
-      _showError('Une erreur est survenue');
+      _showError('Une erreur est survenue : $e');
     } finally {
-      if (mounted) setState(() => _isPublishing = false);
+      if (mounted) setState(() {
+        _isPublishing = false;
+        _isCompressing = false;
+      });
     }
   }
 
@@ -211,12 +274,30 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: _isPublishing
-            ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                CircularProgressIndicator(color: Color(0xFF8B5CF6)),
-                SizedBox(height: 16),
-                Text('Publication en cours...', style: TextStyle(color: Colors.white, fontSize: 16)),
-              ]))
+        // ✅ MODIFICATION ICI : Gestion dynamique du loader (Compression vs Publication)
+        child: (_isPublishing || _isCompressing)
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(color: Color(0xFF8B5CF6)),
+                    const SizedBox(height: 16),
+                    Text(
+                      _isCompressing 
+                          ? '🎬 Compression de la vidéo en cours...' 
+                          : '🚀 Publication en cours...',
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    if (_isCompressing) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Cela peut prendre quelques secondes',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ]
+                  ],
+                ),
+              )
             : Column(
                 children: [
                   Expanded(
@@ -239,7 +320,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // ✅ AFFICHER LE SON CHOISI (NOUVEAU)
                           if (widget.selectedSound != null) ...[
                             Container(
                               padding: const EdgeInsets.all(12),

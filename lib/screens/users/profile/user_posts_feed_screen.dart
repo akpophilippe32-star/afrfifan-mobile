@@ -1,10 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:share_plus/share_plus.dart'; // 🔥 Pour le vrai partage sur WhatsApp, etc.
+import 'package:share_plus/share_plus.dart';
+import 'package:video_player/video_player.dart';
 
 class UserPostsFeedScreen extends StatefulWidget {
-  final List<dynamic> posts; 
-  final int initialIndex;    
+  final List<dynamic> posts;
+  final int initialIndex;
 
   const UserPostsFeedScreen({
     super.key,
@@ -18,22 +20,26 @@ class UserPostsFeedScreen extends StatefulWidget {
 
 class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
   late PageController _pageController;
-  final SupabaseClient _supabase = Supabase.instance.client; 
-  
+  final SupabaseClient _supabase = Supabase.instance.client;
+
   late List<bool> _isLikedList;
   late List<bool> _isSavedList;
   late List<int> _likesCountList;
   late List<int> _commentsCountList;
 
+  // ✅ Stockage des contrôleurs vidéo par postId
+  final Map<String, VideoPlayerController> _videoControllers = {};
+
   @override
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: widget.initialIndex);
-    
-    _isLikedList = List.generate(widget.posts.length, (index) => false);
-    _isSavedList = List.generate(widget.posts.length, (index) => widget.posts[index]['is_saved'] == true);
-    _likesCountList = List.generate(widget.posts.length, (index) => widget.posts[index]['likes_count'] ?? 0);
-    _commentsCountList = List.generate(widget.posts.length, (index) => widget.posts[index]['comments_count'] ?? 0);
+
+    final count = widget.posts.length;
+    _isLikedList = List.generate(count, (index) => false);
+    _isSavedList = List.generate(count, (index) => widget.posts[index]['is_saved'] == true);
+    _likesCountList = List.generate(count, (index) => widget.posts[index]['likes_count'] ?? 0);
+    _commentsCountList = List.generate(count, (index) => widget.posts[index]['comments_count'] ?? 0);
 
     _checkUserExistingLikes();
   }
@@ -46,7 +52,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
 
     try {
       final response = await _supabase
-          .from('post_likes') // 🛠️ Remplacement par 'post_likes'
+          .from('post_likes')
           .select('post_id')
           .eq('user_id', user.id)
           .filter('post_id', 'in', postIds);
@@ -68,13 +74,23 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     }
   }
 
+  void _onVideoControllerReady(VideoPlayerController controller, String postId) {
+    setState(() {
+      _videoControllers[postId] = controller;
+    });
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
+    for (var controller in _videoControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
-  // --- ACTIONS ---
+  // ─── ACTIONS ──────────────────────────────────────────────
+
   void _toggleLike(int index, String postId) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return;
@@ -90,10 +106,8 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
 
     try {
       if (_isLikedList[index]) {
-        // 🛠️ Remplacement par 'post_likes'
         await _supabase.from('post_likes').insert({'post_id': postId, 'user_id': user.id});
       } else {
-        // 🛠️ Remplacement par 'post_likes'
         await _supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', user.id);
       }
     } catch (e) {
@@ -111,14 +125,12 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     });
 
     try {
-      // 🛠️ Remplacement par 'post_likes'
       await _supabase.from('post_likes').insert({'post_id': postId, 'user_id': user.id});
     } catch (e) {
       debugPrint("Erreur Double Tap Like : $e");
     }
   }
 
-  // 🔥 FONCTION DE PARTAGE NATIF
   void _sharePost(String title, String imageUrl) async {
     try {
       await Share.share(
@@ -132,36 +144,34 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     }
   }
 
-  // 🔥 OUVERTURE PANNEAU DES COMMENTAIRES DYNAMIQUES
   void _openComments(BuildContext context, String postId, int index) {
     final TextEditingController commentController = TextEditingController();
 
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Permet au clavier de ne pas cacher le champ
-      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return StatefulBuilder( // Permet de rafraîchir le panneau des commentaires de manière isolée
+        return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
-            return SizedBox(
-              height: MediaQuery.of(context).size.height * 0.65,
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7,
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 20, right: 20, top: 20,
+              ),
               child: Column(
                 children: [
-                  const SizedBox(height: 10),
-                  Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text(
-                      "Commentaires (${_commentsCountList[index]})", 
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black)
-                    ),
+                  Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(10))),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Commentaires (${_commentsCountList[index]})",
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                  const Divider(height: 1),
-                  
-                  // Flux futur/réel des commentaires récupérés depuis Supabase
+                  const Divider(color: Colors.grey, height: 20),
                   Expanded(
                     child: FutureBuilder<List<dynamic>>(
                       future: _supabase
@@ -171,7 +181,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                           .order('created_at', ascending: true),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator(color: Colors.purple));
+                          return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
                         }
                         if (snapshot.hasError || snapshot.data == null || snapshot.data!.isEmpty) {
                           return const Center(
@@ -185,19 +195,35 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                           itemBuilder: (context, cIndex) {
                             final comment = comments[cIndex];
                             final profile = comment['profiles'];
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundImage: NetworkImage(
-                                  profile?['avatar_url'] ?? 'https://via.placeholder.com/150'
-                                ),
-                              ),
-                              title: Text(
-                                profile?['username'] ?? 'Anonyme', 
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black)
-                              ),
-                              subtitle: Text(
-                                comment['content'] ?? '', 
-                                style: const TextStyle(color: Colors.black87, fontSize: 14)
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 18,
+                                    backgroundImage: NetworkImage(
+                                      profile?['avatar_url'] ?? 'https://via.placeholder.com/150'
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          profile?['username'] ?? 'Anonyme',
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          comment['content'] ?? '',
+                                          style: const TextStyle(color: Colors.white70, fontSize: 14),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
                           },
@@ -205,51 +231,45 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                       },
                     ),
                   ),
-                  
-                  const Divider(height: 1),
-                  // Zone de saisie d'un nouveau commentaire
+                  const Divider(color: Colors.grey, height: 1),
                   Padding(
-                    padding: EdgeInsets.only(
-                      bottom: MediaQuery.of(context).viewInsets.bottom + 16, 
-                      left: 16, 
-                      right: 16, 
-                      top: 8
-                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Row(
                       children: [
                         Expanded(
                           child: TextField(
                             controller: commentController,
-                            style: const TextStyle(color: Colors.black),
+                            style: const TextStyle(color: Colors.white),
                             decoration: InputDecoration(
                               hintText: "Ajouter un commentaire...",
-                              hintStyle: const TextStyle(color: Colors.grey),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+                              hintStyle: const TextStyle(color: Colors.white54),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFF1A1A1A),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                             ),
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.send, color: Colors.purple), 
+                          icon: const Icon(Icons.send, color: Color(0xFF8B5CF6)),
                           onPressed: () async {
                             final user = _supabase.auth.currentUser;
                             if (user == null || commentController.text.trim().isEmpty) return;
 
                             try {
-                              // Insertion du commentaire en BDD
                               await _supabase.from('comments').insert({
                                 'post_id': postId,
                                 'user_id': user.id,
                                 'content': commentController.text.trim(),
                               });
-
                               commentController.clear();
-                              
-                              // On met à jour le compteur global et on force le rafraîchissement du modal
                               setState(() {
                                 _commentsCountList[index]++;
                               });
-                              setModalState(() {}); 
+                              setModalState(() {});
                             } catch (e) {
                               debugPrint("Erreur envoi commentaire : $e");
                             }
@@ -267,6 +287,91 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     );
   }
 
+  // ─── WIDGET MÉDIA (CORRIGÉ ET BLINDÉ) ──────────────
+  Widget _buildMediaWidget(int index) {
+    final post = widget.posts[index];
+    final postId = post['id']?.toString() ?? '';
+    final mediaType = (post['media_type']?.toString() ?? 'image').toLowerCase();
+    final mediaUrl = post['media_url']?.toString();
+    
+    // ✅ Extraction robuste du texte (vérifie toutes les clés possibles)
+    final caption = (post['content'] ?? post['caption'] ?? post['text'] ?? post['description'] ?? '').toString().trim();
+    final backgroundColorHex = post['background_color']?.toString();
+
+    // 🔍 DEBUG : Regarde ta console pour voir EXACTEMENT ce que reçoit ce widget
+    debugPrint('🔍 POST $index -> mediaType: "$mediaType" | caption: "$caption" | bgColor: "$backgroundColorHex"');
+
+    // ─── TEXTE ──────────────────────────────────────────────
+    if (mediaType == 'text') {
+      Color getBgColor() {
+        if (backgroundColorHex == null || backgroundColorHex.isEmpty) return Colors.grey.shade800;
+        try {
+          String hex = backgroundColorHex.startsWith('#') 
+              ? backgroundColorHex.replaceAll('#', '0xFF') 
+              : '0xFF$backgroundColorHex';
+          return Color(int.parse(hex));
+        } catch (e) {
+          return Colors.grey.shade800;
+        }
+      }
+      
+      return Container(
+        color: getBgColor(),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Text(
+              caption.isEmpty 
+                  ? '⚠️ AUCUN TEXTE TROUVÉ\n\nVérifiez que la requête SQL de l\'écran précédent inclut bien les colonnes "content", "caption" ou "description" !' 
+                  : caption,
+              style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ─── VIDÉO ──────────────────────────────────────────────
+    if (mediaType == 'video' && mediaUrl != null && mediaUrl.isNotEmpty) {
+      return _PostVideoPlayer(
+        mediaUrl: mediaUrl,
+        postId: postId,
+        onControllerReady: _onVideoControllerReady,
+      );
+    }
+
+    // ─── IMAGE ──────────────────────────────────────────────
+    if (mediaUrl != null && mediaUrl.isNotEmpty) {
+      return Image.network(
+        mediaUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          color: Colors.grey.shade900,
+          child: const Center(child: Icon(Icons.image_not_supported, color: Colors.white54, size: 50)),
+        ),
+      );
+    }
+
+    // ─── FALLBACK ULTIME ─────────────────────────────────────
+    return Container(
+      color: Colors.grey.shade900,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 50),
+            const SizedBox(height: 16),
+            const Text('Type de média non reconnu ou URL manquante', style: TextStyle(color: Colors.white, fontSize: 16), textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text('Type: $mediaType\nURL: $mediaUrl', style: const TextStyle(color: Colors.grey, fontSize: 12), textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── BUILD ──────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -275,40 +380,43 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
         children: [
           PageView.builder(
             controller: _pageController,
-            scrollDirection: Axis.vertical, 
+            scrollDirection: Axis.vertical,
             itemCount: widget.posts.length,
             itemBuilder: (context, index) {
               final post = widget.posts[index];
               final postId = post['id']?.toString() ?? '';
-              final imageUrl = post['media_url'] ?? 'https://via.placeholder.com/600';
-              final title = post['title'] ?? 'Pas de description';
+              final title = post['title'] ?? post['content'] ?? post['caption'] ?? '';
+              final mediaType = post['media_type']?.toString() ?? 'image';
 
               return Stack(
                 fit: StackFit.expand,
                 children: [
+                  // ─── 1. MÉDIA (image, texte, vidéo sans barre) ──
                   GestureDetector(
                     onDoubleTap: () => _handleDoubleTap(index, postId),
-                    child: Image.network(imageUrl, fit: BoxFit.cover),
+                    child: _buildMediaWidget(index),
                   ),
-                  
-                  IgnorePointer( 
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.transparent, Colors.black87],
-                          stops: [0.6, 1.0],
+
+                  // ─── 2. DÉGRADÉ ──────────────────────────────
+                  if (mediaType != 'text')
+                    IgnorePointer(
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Colors.black87],
+                            stops: [0.6, 1.0],
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
-                  // Infos Bas Gauche
+                  // ─── 3. INFOS BAS GAUCHE ────────────────────
                   Positioned(
                     left: 16,
-                    bottom: 40,
-                    right: 80, 
+                    bottom: 100,
+                    right: 80,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -325,10 +433,10 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                     ),
                   ),
 
-                  // Boutons Droite
+                  // ─── 4. BOUTONS DROITE ──────────────────────
                   Positioned(
                     right: 16,
-                    bottom: 60,
+                    bottom: 120,
                     child: Column(
                       children: [
                         _buildActionButton(
@@ -338,7 +446,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                           onTap: () => _toggleLike(index, postId),
                         ),
                         const SizedBox(height: 20),
-                        
                         _buildActionButton(
                           icon: Icons.chat_bubble_outline,
                           iconColor: Colors.white,
@@ -346,30 +453,39 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                           onTap: () => _openComments(context, postId, index),
                         ),
                         const SizedBox(height: 20),
-                        
                         _buildActionButton(
                           icon: _isSavedList[index] ? Icons.bookmark : Icons.bookmark_border,
                           iconColor: _isSavedList[index] ? Colors.purpleAccent : Colors.white,
                           label: _isSavedList[index] ? "Sauvé" : "Sauver",
-                          onTap: () {},
+                          onTap: () {
+                            // À implémenter
+                          },
                         ),
                         const SizedBox(height: 20),
-                        
                         _buildActionButton(
-                          icon: Icons.reply, 
+                          icon: Icons.share,
                           iconColor: Colors.white,
                           label: "Partager",
-                          onTap: () => _sharePost(title, imageUrl), // 🔥 Action de partage active !
+                          onTap: () => _sharePost(title, post['media_url'] ?? ''),
                         ),
                       ],
                     ),
                   ),
+
+                  // ─── 5. BARRE DE CONTRÔLE VIDÉO (EN DERNIER) ──
+                  if (mediaType == 'video' && _videoControllers.containsKey(postId))
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _VideoControlsBar(controller: _videoControllers[postId]!),
+                    ),
                 ],
               );
             },
           ),
 
-          // Bouton Retour
+          // ─── BOUTON RETOUR ──────────────────────────────────
           Positioned(
             top: 50,
             left: 16,
@@ -400,6 +516,225 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
           Icon(icon, color: iconColor, size: 35),
           const SizedBox(height: 4),
           Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  WIDGET LECTEUR VIDÉO (UNIQUEMENT LA VIDÉO, SANS BARRE)
+// ═══════════════════════════════════════════════════════════════════
+class _PostVideoPlayer extends StatefulWidget {
+  final String mediaUrl;
+  final String postId;
+  final void Function(VideoPlayerController, String)? onControllerReady;
+
+  const _PostVideoPlayer({
+    required this.mediaUrl,
+    required this.postId,
+    this.onControllerReady,
+  });
+
+  @override
+  State<_PostVideoPlayer> createState() => _PostVideoPlayerState();
+}
+
+class _PostVideoPlayerState extends State<_PostVideoPlayer> {
+  VideoPlayerController? _controller;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPlayer();
+  }
+
+  Future<void> _initPlayer() async {
+    try {
+      _controller = VideoPlayerController.network(widget.mediaUrl);
+      await _controller!.initialize();
+      if (mounted) {
+        setState(() => _initialized = true);
+        _controller!.play();
+        _controller!.setLooping(true);
+        widget.onControllerReady?.call(_controller!, widget.postId);
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur init vidéo post ${widget.postId}: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_initialized || _controller == null) {
+      return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+    }
+    return AspectRatio(
+      aspectRatio: _controller!.value.aspectRatio,
+      child: VideoPlayer(_controller!),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  WIDGET BARRE DE CONTRÔLE VIDÉO (AVEC MUTE ET VITESSE)
+// ═══════════════════════════════════════════════════════════════════
+class _VideoControlsBar extends StatefulWidget {
+  final VideoPlayerController controller;
+  const _VideoControlsBar({required this.controller});
+
+  @override
+  State<_VideoControlsBar> createState() => _VideoControlsBarState();
+}
+
+class _VideoControlsBarState extends State<_VideoControlsBar> {
+  bool _isPlaying = false;
+  bool _isMuted = false;
+  double _speed = 1.0;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_update);
+    _update();
+  }
+
+  void _update() {
+    if (!mounted) return;
+    setState(() {
+      _isPlaying = widget.controller.value.isPlaying;
+      _position = widget.controller.value.position;
+      _duration = widget.controller.value.duration;
+      _isMuted = widget.controller.value.volume == 0;
+    });
+  }
+
+  void _togglePlayPause() {
+    if (_isPlaying) {
+      widget.controller.pause();
+    } else {
+      widget.controller.play();
+    }
+  }
+
+  void _toggleMute() {
+    setState(() {
+      _isMuted = !_isMuted;
+      widget.controller.setVolume(_isMuted ? 0.0 : 1.0);
+    });
+  }
+
+  void _changeSpeed() {
+    setState(() {
+      if (_speed == 1.0) _speed = 1.5;
+      else if (_speed == 1.5) _speed = 2.0;
+      else _speed = 1.0;
+      widget.controller.setPlaybackSpeed(_speed);
+    });
+  }
+
+  String _formatDuration(Duration d) {
+    final mins = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final secs = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return "$mins:$secs";
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_update);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Colors.black.withOpacity(0.85), Colors.transparent],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: _togglePlayPause,
+                    child: Icon(
+                      _isPlaying ? Icons.pause : Icons.play_arrow,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: _toggleMute,
+                    child: Icon(
+                      _isMuted ? Icons.volume_off : Icons.volume_up,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: _changeSpeed,
+                    child: Text(
+                      '${_speed}x',
+                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: Colors.white.withOpacity(0.3),
+              thumbColor: Colors.white,
+              overlayColor: Colors.white.withOpacity(0.2),
+            ),
+            child: Slider(
+              value: _duration.inMilliseconds > 0
+                  ? _position.inMilliseconds / _duration.inMilliseconds
+                  : 0.0,
+              onChanged: (value) {
+                final seekTo = Duration(
+                  milliseconds: (value * _duration.inMilliseconds).round(),
+                );
+                widget.controller.seekTo(seekTo);
+                setState(() {
+                  _position = seekTo;
+                });
+              },
+            ),
+          ),
         ],
       ),
     );

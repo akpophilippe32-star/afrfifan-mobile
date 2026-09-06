@@ -3,17 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// ✅ IMPORTS DES 3 ÉCRANS + PARAMÈTRES
+// ✅ IMPORTS DES ÉCRANS
 import 'my_subscriptions_screen.dart';
 import 'my_followers_screen.dart';
 import 'my_following_screen.dart';
 import 'user_posts_feed_screen.dart';
+import 'my_purchases_screen.dart'; // ✅ AJOUTÉ : Écran des achats
 import '../settings/settings_screen.dart';
 import '../settings/personal_info_screen.dart'; 
 import 'creator_dashboard_screen.dart';
 import 'create_story_screen.dart';
 import 'view_story_screen.dart';
 import '../validation/personal_info_step.dart';
+import '../downloads/downloads_screen.dart'; 
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -89,7 +91,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       final postsData = await Supabase.instance.client
           .from('posts')
-          .select('id, media_url, title, created_at, likes_count, media_type, views_count')
+          .select('id, media_url, title, content, caption, background_color, created_at, likes_count, media_type, views_count') 
           .eq('user_id', userId)
           .order('created_at', ascending: false)
           .timeout(connectionTimeout);
@@ -124,7 +126,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ✅ NOUVEAU : Menu hamburger qui s'ouvre en bas
   void _showHamburgerMenu() {
     showModalBottomSheet(
       context: context,
@@ -159,7 +160,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 16),
             
-            // ✅ 4 OPTIONS DU MENU
+            // 1. Abonnés
             _buildMenuItem(
               icon: Icons.group,
               label: 'Abonnés',
@@ -172,6 +173,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 );
               },
             ),
+            
+            // 2. Suivis
             _buildMenuItem(
               icon: Icons.people,
               label: 'Suivis',
@@ -184,6 +187,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 );
               },
             ),
+            
+            // 3. Abonnements
             _buildMenuItem(
               icon: Icons.star,
               label: 'Abonnements',
@@ -196,9 +201,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 );
               },
             ),
+
+            // ✅ 4. NOUVEAU : Mes achats
+            _buildMenuItem(
+              icon: Icons.shopping_bag,
+              label: 'Mes achats',
+              subtitle: 'Tes produits et contenus achetés',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MyPurchasesScreen()),
+                );
+              },
+            ),
             
             const Divider(color: Color(0xFF2A2A2A), height: 1),
             
+            // ✅ 5. Téléchargé
+            _buildMenuItem(
+              icon: Icons.download_for_offline,
+              label: 'Téléchargé',
+              subtitle: 'Tes vidéos et images hors ligne',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const DownloadsScreen()),
+                );
+              },
+            ),
+            
+            // 6. Paramètres
             _buildMenuItem(
               icon: Icons.settings,
               label: 'Paramètres',
@@ -220,7 +254,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ Widget pour chaque item du menu
   Widget _buildMenuItem({
     required IconData icon,
     required String label,
@@ -391,12 +424,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 50, 20, 30),
                 child: Column(
                   children: [
-                    // ✅ CHANGÉ : Icône hamburger au lieu de paramètres
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.menu, color: Colors.white, size: 28), // ☰ Hamburger
+                          icon: const Icon(Icons.menu, color: Colors.white, size: 28),
                           tooltip: 'Menu',
                           onPressed: _showHamburgerMenu,
                         ),

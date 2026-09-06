@@ -1,12 +1,16 @@
+import 'dart:io';
 import 'dart:ui'; // Pour l'effet de flou
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:share_plus/share_plus.dart'; // ✅ Pour le vrai partage
+import 'package:share_plus/share_plus.dart';
+import 'package:video_player/video_player.dart';
+
 import '../../../theme/app_colors.dart';
 import '../../../widgets/tip_dialog.dart';
 import '../../../widgets/report_dialog.dart';
-import '../creator/creator_profile_screen.dart'; // ✅ Pour aller au profil
-import '../creator/subscription_payment_screen.dart'; // ✅ Pour le déverrouillage
+import '../creator/creator_profile_screen.dart';
+import '../creator/subscription_payment_screen.dart';
 
 class ExplorePostDetailScreen extends StatefulWidget {
   final List<Map<String, dynamic>> posts;
@@ -31,7 +35,11 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
   String? _currentUserAvatar;
   
   Set<String> _likedPostIds = {};
-  Set<String> _subscribedCreatorIds = {}; // ✅ Pour gérer le verrouillage
+  Set<String> _subscribedCreatorIds = {};
+
+  // ✅ Stockage du contrôleur vidéo pour le post courant
+  VideoPlayerController? _currentVideoController;
+  String? _currentVideoPostId;
 
   @override
   void initState() {
@@ -44,47 +52,28 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    _currentVideoController?.dispose();
     super.dispose();
   }
 
-  // ✅ Charge le nom, l'avatar de l'utilisateur et ses abonnements
   Future<void> _loadUserData() async {
     if (_currentUserId == null) return;
-
     try {
-      // 1. Infos utilisateur pour les commentaires
-      final userProfile = await supabase
-          .from('profiles')
-          .select('username, full_name, avatar_url')
-          .eq('id', _currentUserId!)
-          .maybeSingle();
-      
+      final userProfile = await supabase.from('profiles').select('username, full_name, avatar_url').eq('id', _currentUserId!).maybeSingle();
       if (userProfile != null) {
         _currentUserName = userProfile['full_name'] ?? userProfile['username'] ?? 'Utilisateur';
         _currentUserAvatar = userProfile['avatar_url'];
       }
 
-      // 2. Abonnements actifs (pour déverrouiller)
-      final subsResponse = await supabase
-          .from('subscriptions')
-          .select('creator_id')
-          .eq('fan_id', _currentUserId!)
-          .eq('status', 'active');
-      
+      final subsResponse = await supabase.from('subscriptions').select('creator_id').eq('fan_id', _currentUserId!).eq('status', 'active');
       if (mounted) {
         setState(() {
           _subscribedCreatorIds = subsResponse.map<String>((row) => row['creator_id'] as String).toSet();
         });
       }
 
-      // 3. Likes déjà donnés
       final postIds = widget.posts.map((p) => p['id'].toString()).toList();
-      final likesResponse = await supabase
-          .from('post_likes')
-          .select('post_id')
-          .inFilter('post_id', postIds)
-          .eq('user_id', _currentUserId!);
-      
+      final likesResponse = await supabase.from('post_likes').select('post_id').inFilter('post_id', postIds).eq('user_id', _currentUserId!);
       if (mounted) {
         setState(() {
           _likedPostIds = likesResponse.map((row) => row['post_id'].toString()).toSet();
@@ -116,10 +105,8 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
     } catch (e) { debugPrint('❌ Erreur like: $e'); }
   }
 
-  // ✅ COMMENTAIRES EN MODE SOMBRE (Identique à Home)
   void _openComments(String postId, int postIndex) {
     final TextEditingController commentController = TextEditingController();
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -177,13 +164,7 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                           child: TextField(
                             controller: commentController,
                             style: const TextStyle(color: Colors.white, fontSize: 14),
-                            decoration: const InputDecoration(
-                              hintText: 'Ajouter un commentaire...', 
-                              hintStyle: TextStyle(color: Colors.white54), 
-                              border: InputBorder.none,
-                              filled: true,
-                              fillColor: Colors.black, // ✅ Fond noir garanti
-                            ),
+                            decoration: const InputDecoration(hintText: 'Ajouter un commentaire...', hintStyle: TextStyle(color: Colors.white54), border: InputBorder.none, filled: true, fillColor: Colors.black),
                           ),
                         ),
                         IconButton(
@@ -193,12 +174,7 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                             if (text.isEmpty) return;
                             commentController.clear();
                             try {
-                              await supabase.from('comments').insert({
-                                'post_id': postId, 
-                                'user_id': _currentUserId,
-                                'user_name': _currentUserName, // ✅ Vrai nom de l'utilisateur
-                                'content': text
-                              });
+                              await supabase.from('comments').insert({'post_id': postId, 'user_id': _currentUserId, 'user_name': _currentUserName, 'content': text});
                               final totalComments = await supabase.from('comments').count(CountOption.exact).eq('post_id', postId);
                               await supabase.from('posts').update({'comments_count': totalComments}).eq('id', postId);
                               setModalState(() {});
@@ -226,6 +202,14 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
     return count.toString();
   }
 
+  // ✅ Callback pour recevoir le contrôleur depuis le widget vidéo
+  void _onVideoControllerReady(VideoPlayerController controller, String postId) {
+    setState(() {
+      _currentVideoController = controller;
+      _currentVideoPostId = postId;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -240,41 +224,80 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
           final creatorId = post['user_id']?.toString() ?? '';
           final caption = post['content'] ?? post['caption'] ?? post['title'] ?? '';
           final mediaUrl = post['media_url'];
+          final mediaType = post['media_type']?.toString() ?? 'image';
+          final backgroundColorHex = post['background_color'];
+          
           final creatorName = post['profiles']?['username'] ?? 'Créateur';
           final creatorAvatar = post['profiles']?['avatar_url'];
           final likesCount = post['likes_count'] ?? 0;
           final commentsCount = post['comments_count'] ?? 0;
           final isLiked = _likedPostIds.contains(postId);
 
-          // ✅ LOGIQUE DE VERROUILLAGE
           final bool isMyOwnPost = (_currentUserId == creatorId);
-          final bool isLocked = !isMyOwnPost && !_subscribedCreatorIds.contains(creatorId);
+          final bool isCreator = post['profiles']?['role'] == 'creator';
+          final String accessLevel = post['access_level']?.toString() ?? 'public';
+          final bool isPostPremium = accessLevel == 'premium' || accessLevel == 'pro';
+          final bool isLocked = isCreator && isPostPremium && !isMyOwnPost && !_subscribedCreatorIds.contains(creatorId);
+
+          Color getBgColor() {
+            if (backgroundColorHex == null) return Colors.grey.shade800;
+            try {
+              String hex = backgroundColorHex.replaceAll('#', '0xFF');
+              return Color(int.parse(hex));
+            } catch (e) {
+              return Colors.grey.shade800;
+            }
+          }
 
           return Stack(
             fit: StackFit.expand,
             children: [
-              // 1. IMAGE/VIDÉO (Avec flou si verrouillé)
-              if (mediaUrl != null && mediaUrl.toString().isNotEmpty)
-                isLocked
-                    ? ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                        child: Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54))),
-                      )
-                    : Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54)))
+              // ─── 1. MÉDIA ──────────────────────────────────────
+              if (mediaType == 'text')
+                Container(
+                  color: getBgColor(),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Text(
+                        caption.isEmpty ? '...' : caption,
+                        style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600, height: 1.4),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                )
+              else if (mediaType == 'video')
+                Positioned.fill(
+                  child: _DetailVideoPlayer(
+                    mediaUrl: mediaUrl,
+                    isLocked: isLocked,
+                    postId: postId,
+                    onControllerReady: _onVideoControllerReady,
+                  ),
+                )
               else
-                Container(color: Colors.grey.shade900, child: const Center(child: Icon(Icons.image_not_supported, size: 50, color: Colors.white54))),
+                (mediaUrl != null && mediaUrl.toString().isNotEmpty)
+                    ? (isLocked
+                        ? ImageFiltered(
+                            imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                            child: Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54))),
+                          )
+                        : Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54))))
+                    : Container(color: Colors.grey.shade900, child: const Center(child: Icon(Icons.image_not_supported, size: 50, color: Colors.white54))),
 
-              // 2. DÉGRADÉ
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                    colors: [Colors.black.withOpacity(0.3), Colors.transparent, Colors.black.withOpacity(0.8)],
+              // ─── 2. DÉGRADÉ ───────────────────────────────────
+              if (mediaType != 'text')
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                      colors: [Colors.black.withOpacity(0.3), Colors.transparent, Colors.black.withOpacity(0.8)],
+                    ),
                   ),
                 ),
-              ),
 
-              // 3. OVERLAY DE VERROUILLAGE (Cliquable pour payer)
+              // ─── 3. OVERLAY DE VERROUILLAGE ──────────────────
               if (isLocked)
                 GestureDetector(
                   onTap: () {
@@ -289,10 +312,7 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                         ),
                       ),
                     ).then((success) {
-                      if (success == true) {
-                        // Recharger les données pour déverrouiller
-                        _loadUserData();
-                      }
+                      if (success == true) _loadUserData();
                     });
                   },
                   child: Container(
@@ -301,11 +321,7 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                            child: const Icon(Icons.lock, color: Colors.white, size: 32),
-                          ),
+                          Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: const Icon(Icons.lock, color: Colors.white, size: 32)),
                           const SizedBox(height: 12),
                           const Text('Contenu Exclusif', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
@@ -316,20 +332,16 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                   ),
                 ),
 
-              // 4. BOUTON RETOUR
+              // ─── 4. BOUTON RETOUR ─────────────────────────────
               Positioned(
                 top: 40, left: 16,
                 child: GestureDetector(
                   onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                    child: const Icon(Icons.arrow_back, color: Colors.white),
-                  ),
+                  child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.arrow_back, color: Colors.white)),
                 ),
               ),
 
-              // 5. BOUTONS VERTICAUX À DROITE (Désactivés si verrouillé)
+              // ─── 5. BOUTONS VERTICAUX À DROITE ──────────────
               if (!isLocked)
                 Positioned(
                   right: 12, bottom: 100,
@@ -339,22 +351,15 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                       const SizedBox(height: 18),
                       _buildSideButton(Icons.chat_bubble_rounded, _formatCount(commentsCount), () => _openComments(postId, index)),
                       const SizedBox(height: 18),
-                      _buildSideButton(Icons.local_cafe, 'Tip', () {
-                        showDialog(context: context, builder: (context) => TipDialog(creatorId: creatorId, creatorName: creatorName));
-                      }, iconColor: Colors.orangeAccent),
+                      _buildSideButton(Icons.local_cafe, 'Tip', () => showDialog(context: context, builder: (context) => TipDialog(creatorId: creatorId, creatorName: creatorName)), iconColor: Colors.orangeAccent),
                       const SizedBox(height: 18),
-                      _buildSideButton(Icons.share, 'Partager', () {
-                        // ✅ VRAI PARTAGE NATIF
-                        Share.share('Regarde ce post de @$creatorName sur Afrifan : $caption');
-                      }, iconColor: Colors.white),
+                      _buildSideButton(Icons.share, 'Partager', () => Share.share('Regarde ce post de @$creatorName sur Afrifan : $caption'), iconColor: Colors.white),
                       const SizedBox(height: 18),
                       PopupMenuButton<String>(
                         color: const Color(0xFF1A1A1A),
                         icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
                         onSelected: (value) {
-                          if (value == 'report') {
-                            showDialog(context: context, builder: (context) => ReportDialog(targetId: postId, targetType: 'post'));
-                          }
+                          if (value == 'report') showDialog(context: context, builder: (context) => ReportDialog(targetId: postId, targetType: 'post'));
                         },
                         itemBuilder: (context) => [
                           const PopupMenuItem<String>(value: 'report', child: Row(children: [Icon(Icons.flag_outlined, color: Colors.redAccent, size: 20), SizedBox(width: 12), Text('Signaler', style: TextStyle(color: Colors.white))])),
@@ -364,37 +369,40 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                   ),
                 ),
 
-              // 6. INFOS EN BAS À GAUCHE (Avec Photo et Lien vers le Profil)
+              // ─── 6. INFOS EN BAS À GAUCHE ──────────────────────
               Positioned(
-                left: 16, right: 80, bottom: 40,
+                left: 16, right: 80, bottom: 80, // décalé pour ne pas chevaucher la barre
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => CreatorProfileScreen(creatorId: creatorId)),
-                        );
-                      },
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => CreatorProfileScreen(creatorId: creatorId))),
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundColor: Colors.grey.shade800,
-                            backgroundImage: creatorAvatar != null ? NetworkImage(creatorAvatar) : null,
-                            child: creatorAvatar == null ? const Icon(Icons.person, color: Colors.white, size: 20) : null,
-                          ),
+                          CircleAvatar(radius: 20, backgroundColor: Colors.grey.shade800, backgroundImage: creatorAvatar != null ? NetworkImage(creatorAvatar) : null, child: creatorAvatar == null ? const Icon(Icons.person, color: Colors.white, size: 20) : null),
                           const SizedBox(width: 10),
                           Text('@$creatorName', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                         ],
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Text(caption.isEmpty ? '📝 (Pas de légende)' : caption, style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4, shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))])),
+                    if (mediaType != 'text')
+                      Text(caption.isEmpty ? '📝 (Pas de légende)' : caption, style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4, shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))])),
                   ],
                 ),
               ),
+
+              // ─── 7. BARRE DE CONTRÔLE VIDÉO (EN DERNIER) ──────
+              if (mediaType == 'video' && _currentVideoPostId == postId && _currentVideoController != null)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _VideoControls(
+                    controller: _currentVideoController,
+                    isLocked: isLocked,
+                  ),
+                ),
             ],
           );
         },
@@ -413,6 +421,290 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
             if (label.isNotEmpty) ...[const SizedBox(height: 4), Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))],
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  WIDGET LECTEUR VIDÉO (UNIQUEMENT LA VIDÉO, SANS BARRE DE CONTRÔLE)
+// ═══════════════════════════════════════════════════════════════════
+class _DetailVideoPlayer extends StatefulWidget {
+  final String? mediaUrl;
+  final bool isLocked;
+  final String postId;
+  final void Function(VideoPlayerController, String)? onControllerReady;
+
+  const _DetailVideoPlayer({
+    Key? key,
+    required this.mediaUrl,
+    required this.isLocked,
+    required this.postId,
+    this.onControllerReady,
+  }) : super(key: key);
+
+  @override
+  State<_DetailVideoPlayer> createState() => _DetailVideoPlayerState();
+}
+
+class _DetailVideoPlayerState extends State<_DetailVideoPlayer> {
+  VideoPlayerController? _controller;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPlayer();
+  }
+
+  Future<void> _initPlayer() async {
+    if (widget.mediaUrl == null || widget.mediaUrl!.isEmpty) return;
+    try {
+      _controller = VideoPlayerController.network(widget.mediaUrl!);
+      await _controller!.initialize();
+      if (mounted) {
+        setState(() => _initialized = true);
+        if (!widget.isLocked) {
+          _controller!.play();
+          _controller!.setLooping(true);
+        }
+        // On notifie le parent que le contrôleur est prêt
+        widget.onControllerReady?.call(_controller!, widget.postId);
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur init vidéo détail: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    // Ne pas dispose le contrôleur ici car il est géré par le parent
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_initialized || _controller == null) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    
+    return GestureDetector(
+      onTap: () {
+        if (widget.isLocked) return;
+        if (_controller!.value.isPlaying) {
+          _controller!.pause();
+        } else {
+          _controller!.play();
+        }
+      },
+      child: AspectRatio(
+        aspectRatio: _controller!.value.aspectRatio,
+        child: VideoPlayer(_controller!),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  WIDGET _VideoControls (BARRE DE CONTRÔLE AVEC GESTION DU CHARGEMENT ET VERROUILLAGE)
+// ═══════════════════════════════════════════════════════════════════
+class _VideoControls extends StatefulWidget {
+  final VideoPlayerController? controller;
+  final bool isLocked;
+  const _VideoControls({this.controller, this.isLocked = false});
+
+  @override
+  State<_VideoControls> createState() => _VideoControlsState();
+}
+
+class _VideoControlsState extends State<_VideoControls> {
+  bool _isPlaying = false;
+  bool _isMuted = false;
+  double _speed = 1.0;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  bool _isDragging = false;
+  bool _isReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachListener();
+  }
+
+  void _attachListener() {
+    if (widget.controller != null) {
+      widget.controller!.addListener(_update);
+      _update();
+      setState(() => _isReady = true);
+    } else {
+      setState(() => _isReady = false);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _VideoControls oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.controller != oldWidget.controller) {
+      oldWidget.controller?.removeListener(_update);
+      _attachListener();
+    }
+  }
+
+  void _update() {
+    if (!mounted || widget.controller == null) return;
+    setState(() {
+      _isPlaying = widget.controller!.value.isPlaying;
+      _position = widget.controller!.value.position;
+      _duration = widget.controller!.value.duration;
+      _isMuted = widget.controller!.value.volume == 0;
+    });
+  }
+
+  void _togglePlayPause() {
+    if (!_isReady || widget.controller == null || widget.isLocked) return;
+    if (_isPlaying) widget.controller!.pause();
+    else widget.controller!.play();
+  }
+
+  void _toggleMute() {
+    if (!_isReady || widget.controller == null || widget.isLocked) return;
+    setState(() {
+      _isMuted = !_isMuted;
+      widget.controller!.setVolume(_isMuted ? 0.0 : 1.0);
+    });
+  }
+
+  void _changeSpeed() {
+    if (!_isReady || widget.controller == null || widget.isLocked) return;
+    setState(() {
+      if (_speed == 1.0) _speed = 1.5;
+      else if (_speed == 1.5) _speed = 2.0;
+      else _speed = 1.0;
+      widget.controller!.setPlaybackSpeed(_speed);
+    });
+  }
+
+  String _formatDuration(Duration d) {
+    final mins = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final secs = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return "$mins:$secs";
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_update);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isInteractive = _isReady && !widget.isLocked;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Colors.black.withOpacity(0.85), Colors.transparent],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Play/Pause + Temps
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: isInteractive ? _togglePlayPause : null,
+                    child: Icon(
+                      _isReady && _isPlaying ? Icons.pause : Icons.play_arrow,
+                      color: isInteractive ? Colors.white : Colors.white38,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _isReady
+                        ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
+                        : '--:-- / --:--',
+                    style: TextStyle(
+                      color: isInteractive ? Colors.white : Colors.white38,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              // Mute + Vitesse
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: isInteractive ? _toggleMute : null,
+                    child: Icon(
+                      _isReady && _isMuted ? Icons.volume_off : Icons.volume_up,
+                      color: isInteractive ? Colors.white : Colors.white38,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: isInteractive ? _changeSpeed : null,
+                    child: Text(
+                      _isReady ? '${_speed}x' : '1x',
+                      style: TextStyle(
+                        color: isInteractive ? Colors.white : Colors.white38,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: Colors.white.withOpacity(0.3),
+              thumbColor: isInteractive ? Colors.white : Colors.white38,
+              overlayColor: Colors.white.withOpacity(0.2),
+            ),
+            child: Slider(
+              value: _isReady && _duration.inMilliseconds > 0
+                  ? _position.inMilliseconds / _duration.inMilliseconds
+                  : 0.0,
+              onChanged: isInteractive
+                  ? (value) {
+                      setState(() {
+                        _isDragging = true;
+                        _position = Duration(
+                          milliseconds: (value * _duration.inMilliseconds).round(),
+                        );
+                      });
+                    }
+                  : null,
+              onChangeStart: (_) => _isDragging = true,
+              onChangeEnd: isInteractive
+                  ? (value) {
+                      final seekTo = Duration(
+                        milliseconds: (value * _duration.inMilliseconds).round(),
+                      );
+                      widget.controller!.seekTo(seekTo);
+                      setState(() => _isDragging = false);
+                    }
+                  : null,
+            ),
+          ),
+        ],
       ),
     );
   }

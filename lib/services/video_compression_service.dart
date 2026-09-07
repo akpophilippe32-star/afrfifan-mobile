@@ -1,38 +1,61 @@
 import 'dart:io';
-import 'package:video_compress/video_compress.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:path_provider/path_provider.dart';
 
+/// Classe simple pour remplacer l'ancien MediaInfo
+class VideoInfo {
+  final String filePath;
+  final int sizeInBytes;
+  final double? durationInSeconds;
+
+  VideoInfo({
+    required this.filePath,
+    required this.sizeInBytes,
+    this.durationInSeconds,
+  });
+}
+
 /// Service de compression vidéo pour Afrifan
-/// Réduit la taille des vidéos avant l'upload pour économiser le stockage et la data.
 class VideoCompressionService {
-  // Instance unique (Singleton) pour éviter de recréer le service à chaque fois
+  // Instance unique (Singleton)
   static final VideoCompressionService _instance = VideoCompressionService._internal();
   factory VideoCompressionService() => _instance;
   VideoCompressionService._internal();
 
-  /// 🎯 Configuration de la compression (Style YouTube/TikTok)
-  /// - Qualité : Moyenne (720p max)
-  /// - FPS : 30 images/seconde
-  /// - Audio : Inclus
-  static const VideoQuality _targetQuality = VideoQuality.MediumQuality;
-  static const int _targetFrameRate = 30;
-
-  ///  Récupère les informations d'une vidéo (durée, taille, chemin)
-  Future<MediaInfo?> getVideoInfo(String filePath) async {
+  /// 🎯 Récupère les informations d'une vidéo
+  Future<VideoInfo?> getVideoInfo(String filePath) async {
     try {
-      // ✅ CORRECTION : getMediaInfo au lieu de getFileMediaInfo
-      final info = await VideoCompress.getMediaInfo(filePath);
-      return info;
+      final file = File(filePath);
+      if (!await file.exists()) return null;
+      
+      final sizeInBytes = await file.length();
+      double? durationInSeconds;
+
+      final session = await FFprobeKit.getMediaInformation(filePath);
+      final mediaInfo = session.getMediaInformation();
+      
+      if (mediaInfo != null) {
+        // ✅ CORRECTION 1 : Ajout du '?' pour gérer le null
+        final durationStr = mediaInfo.getAllProperties()?['duration'];
+        if (durationStr != null) {
+          durationInSeconds = double.tryParse(durationStr);
+        }
+      }
+
+      return VideoInfo(
+        filePath: filePath,
+        sizeInBytes: sizeInBytes,
+        durationInSeconds: durationInSeconds,
+      );
     } catch (e) {
-      print('❌ Erreur lors de la récupération des infos vidéo: $e');
+      print('❌ Erreur infos vidéo: $e');
       return null;
     }
   }
 
-  /// ️ COMPRESSE UNE VIDÉO
-  /// [filePath] : Le chemin de la vidéo originale (depuis la galerie ou caméra)
-  /// [onProgress] : Callback pour afficher la progression (0.0 à 100.0) dans l'UI
-  /// Retourne le chemin du fichier compressé ou null en cas d'échec.
+  /// 🎬 COMPRESSE UNE VIDÉO
   Future<File?> compressVideo(
     String filePath, {
     void Function(double percent)? onProgress,
@@ -40,61 +63,100 @@ class VideoCompressionService {
     try {
       print('🎬 Début de la compression vidéo...');
       
-      // Nettoyer le cache de compression avant de commencer (évite les bugs)
-      await VideoCompress.deleteAllCache();
+      final directory = await getTemporaryDirectory();
+      final fileName = filePath.split('/').last;
+      final nameWithoutExt = fileName.split('.').first;
+      final outputPath = "${directory.path}/compressed_${nameWithoutExt}.mp4";
 
-      // Lancer la compression
-      final MediaInfo? mediaInfo = await VideoCompress.compressVideo(
-        filePath,
-        quality: _targetQuality,
-        deleteOrigin: false, // ⚠️ Ne pas supprimer l'originale tout de suite (au cas où)
-        includeAudio: true,
-        frameRate: _targetFrameRate,
+      final info = await getVideoInfo(filePath);
+      final totalDuration = info?.durationInSeconds ?? 0.0;
+
+      final command = "-i '$filePath' -vcodec libx264 -crf 28 -preset ultrafast -acodec aac -b:a 128k -movflags +faststart '$outputPath'";
+
+      // ✅ CORRECTION 2 : Ordre correct des callbacks pour ffmpeg_kit_flutter_new 4.6.2
+      // 1. Complete Callback
+      // 2. Log Callback
+      // 3. Statistics Callback
+      await FFmpegKit.executeAsync(
+        command,
+        (session) async {
+          final returnCode = await session.getReturnCode();
+          if (ReturnCode.isSuccess(returnCode)) {
+            print('✅ Compression réussie !');
+          } else {
+            print('❌ Échec compression. Code: $returnCode');
+          }
+        },
+        (log) {
+          // Ceci est bien le Log Callback maintenant
+          if (totalDuration > 0) {
+            final logMessage = log.getMessage();
+            if (logMessage != null && logMessage.contains('time=')) {
+              final timeStr = logMessage.split('time=')[1].split(' ')[0];
+              final parts = timeStr.split(':');
+              if (parts.length == 3) {
+                final h = double.tryParse(parts[0]) ?? 0;
+                final m = double.tryParse(parts[1]) ?? 0;
+                final s = double.tryParse(parts[2]) ?? 0;
+                final currentTime = (h * 3600) + (m * 60) + s;
+                
+                final percent = (currentTime / totalDuration) * 100;
+                if (onProgress != null) {
+                  onProgress(percent.clamp(0.0, 100.0));
+                }
+              }
+            }
+          }
+        },
+        (statistics) {
+          // Callback de statistiques (optionnel, on peut l'utiliser pour une barre de progression alternative)
+          // final time = statistics.getTime();
+        },
       );
 
-      if (mediaInfo == null || mediaInfo.file == null) {
-        print('❌ Échec de la compression : aucun fichier retourné.');
-        return null;
+      final compressedFile = File(outputPath);
+      if (await compressedFile.exists()) {
+        final originalSize = await File(filePath).length();
+        final newSize = await compressedFile.length();
+        
+        print('📉 Originale : ${(originalSize / 1024 / 1024).toStringAsFixed(2)} Mo');
+        print('📉 Compressée : ${(newSize / 1024 / 1024).toStringAsFixed(2)} Mo');
+        return compressedFile;
       }
-
-      final File compressedFile = mediaInfo.file!;
-      
-      // Afficher les stats de compression dans la console
-      final originalSize = await File(filePath).length();
-      final compressedSize = await compressedFile.length();
-      
-      print('✅ Compression terminée !');
-      print('   📉 Taille originale : ${(originalSize / 1024 / 1024).toStringAsFixed(2)} Mo');
-      print('   📉 Taille compressée : ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} Mo');
-      print('   📉 Gain : ${((1 - compressedSize / originalSize) * 100).toStringAsFixed(0)}%');
-
-      return compressedFile;
-
+      return null;
     } catch (e) {
-      print('💥 Erreur critique lors de la compression : $e');
+      print('💥 Erreur compression : $e');
       return null;
     }
   }
 
-  /// 🧹 Nettoie les fichiers temporaires de compression pour libérer de l'espace
+  /// 🧹 Nettoie les fichiers temporaires
   Future<void> clearCompressionCache() async {
     try {
-      await VideoCompress.deleteAllCache();
-      print('🧹 Cache de compression vidé.');
+      final directory = await getTemporaryDirectory();
+      final files = directory.listSync();
+      int deletedCount = 0;
+      for (var file in files) {
+        if (file is File && file.path.contains('compressed_')) {
+          await file.delete();
+          deletedCount++;
+        }
+      }
+      print('🧹 Cache vidé ($deletedCount fichiers).');
     } catch (e) {
-      print(' Erreur lors du nettoyage du cache: $e');
+      print('❌ Erreur nettoyage cache: $e');
     }
   }
 
-  /// 📏 Vérifie si la vidéo dépasse les limites autorisées (60 secondes)
+  /// 📏 Vérifie la durée
   Future<bool> isVideoTooLong(String filePath, {int maxSeconds = 60}) async {
     final info = await getVideoInfo(filePath);
-    if (info != null && info.duration != null) {
-      return info.duration! > maxSeconds;
+    if (info != null && info.durationInSeconds != null) {
+      return info.durationInSeconds! > maxSeconds;
     }
     return false;
   }
 }
 
-// Instance globale pour l'utiliser facilement partout dans l'app
+// Instance globale
 final videoCompressionService = VideoCompressionService();

@@ -34,8 +34,9 @@ dependencies:
   connectivity_plus: ^6.0.5     
   flutter_cache_manager: ^3.4.1 
 
-  ffmpeg_kit_flutter: ^6.0.3   
-  video_compress: ^3.1.1       
+  # ✅ VERSION CORRIGÉE (Suggérée par Flutter pour la compatibilité)
+  ffmpeg_kit_flutter_new: ^4.6.2
+  
   flutter_pdfview: ^1.4.4
   dio: ^5.11.1
 

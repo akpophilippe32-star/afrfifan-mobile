@@ -32,7 +32,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
   Uint8List? _imageBytes;
   bool _isLoading = true;
   bool _isPublishing = false;
-  bool _isCompressing = false; // ✅ AJOUTÉ : Pour afficher un loader spécifique à la compression
+  bool _isCompressing = false;
 
   @override
   void initState() {
@@ -99,7 +99,8 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       
       // ✅ COMPRESSION SI C'EST UNE VIDÉO
       if (widget.mediaType == 'video') {
-        final compressedFile = await videoCompressionService.compressVideo(fileToUpload.path);
+        // ✅ CORRECTION : Utiliser VideoCompressionService() au lieu de videoCompressionService
+        final compressedFile = await VideoCompressionService().compressVideo(fileToUpload.path);
         if (compressedFile != null) {
           fileToUpload = XFile(compressedFile.path);
         } else {
@@ -110,7 +111,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       }
 
       final storyId = await contentService.publishStory(
-        mediaFile: fileToUpload, // ✅ On envoie le fichier compressé
+        mediaFile: fileToUpload,
         userId: user.id,
       );
 
@@ -147,7 +148,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
 
     setState(() {
       _isPublishing = true;
-      _isCompressing = widget.mediaType == 'video'; // Active le loader de compression si c'est une vidéo
+      _isCompressing = widget.mediaType == 'video';
     });
 
     try {
@@ -166,7 +167,8 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       XFile fileToUpload = widget.xFile!;
       if (widget.mediaType == 'video') {
         debugPrint('🎬 Début de la compression vidéo...');
-        final compressedFile = await videoCompressionService.compressVideo(
+        // ✅ CORRECTION : Utiliser VideoCompressionService() au lieu de videoCompressionService
+        final compressedFile = await VideoCompressionService().compressVideo(
           fileToUpload.path,
         );
         
@@ -176,12 +178,11 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
           return;
         }
         
-        // On remplace le fichier original par le fichier compressé
         fileToUpload = XFile(compressedFile.path);
         debugPrint('✅ Vidéo compressée avec succès !');
       }
 
-      // ✅ 2. PRÉPARATION DU DRAFT AVEC LE FICHIER (COMPRESSÉ OU NON)
+      // ✅ 2. PRÉPARATION DU DRAFT AVEC LE FICHIER
       draft.mediaFiles = [fileToUpload]; 
 
       // ✅ 3. UPLOAD VERS SUPABASE
@@ -274,7 +275,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        // ✅ MODIFICATION ICI : Gestion dynamique du loader (Compression vs Publication)
         child: (_isPublishing || _isCompressing)
             ? Center(
                 child: Column(

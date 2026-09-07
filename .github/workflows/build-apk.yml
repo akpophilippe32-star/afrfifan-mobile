@@ -41,6 +41,7 @@ jobs:
       - name: Build APK
         run: flutter build apk --release --split-per-abi
 
+
       # ✅ MODIFIÉ : Upload tous les petits APK générés dans un seul dossier
       - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4

@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.afrifan"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 34 
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.afrifan"
-        minSdk = 23
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -29,7 +29,6 @@ android {
     }
 }
 
-// ✅ Nouvelle syntaxe Kotlin (remplace l'ancien kotlinOptions)
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17

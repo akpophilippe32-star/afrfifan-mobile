@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.afrifan"
-    compileSdk = 34 
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.afrifan"
-        minSdk = 24
+        minSdk = 24 
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -7,7 +7,8 @@ import 'stats_tab.dart';
 import 'settings_tab.dart';
 import 'tips_tab.dart';
 import 'go_live_screen.dart'; 
-import 'creator_shop_tab.dart'; // ✅ AJOUTÉ : Import du nouvel onglet Boutique
+import 'creator_shop_tab.dart'; 
+import 'sales_tab.dart'; // ✅ AJOUTÉ : Import du nouvel onglet Mes Ventes
 
 class CreatorDashboardScreen extends StatefulWidget {
   const CreatorDashboardScreen({super.key});
@@ -90,7 +91,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
           StatsTab(),          // Index 3
           SettingsTab(),       // Index 4
           TipsTab(),           // Index 5
-          CreatorShopTab(),    // ✅ Index 6 : NOUVEL ONGLET BOUTIQUE
+          CreatorShopTab(),    // Index 6
+          SalesTab(),          // ✅ Index 7 : NOUVEL ONGLET MES VENTES
         ],
       ),
     );
@@ -138,7 +140,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                 _buildDrawerItem(3, Icons.bar_chart_outlined, 'Statistiques'),
                 _buildDrawerItem(4, Icons.settings_outlined, 'Paramètres'),
                 _buildDrawerItem(5, Icons.local_cafe, 'Pourboires'),
-                _buildDrawerItem(6, Icons.storefront_outlined, 'Ma Boutique'), // ✅ AJOUTÉ ICI
+                _buildDrawerItem(6, Icons.storefront_outlined, 'Ma Boutique'),
+                _buildDrawerItem(7, Icons.trending_up, 'Mes Ventes'), // ✅ AJOUTÉ ICI (Icône tendance)
                 
                 const Divider(height: 32, color: Colors.white24, indent: 20, endIndent: 20),
                 
@@ -180,7 +183,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   }
 
   String _getAppBarTitle() {
-    // ✅ MIS À JOUR AVEC "Ma Boutique" à l'index 6
+    // ✅ MIS À JOUR AVEC "Mes Ventes" à l'index 7
     const titles = [
       'Vue d\'ensemble', 
       'Portefeuille', 
@@ -188,7 +191,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       'Statistiques', 
       'Paramètres', 
       'Pourboires',
-      'Ma Boutique'
+      'Ma Boutique',
+      'Mes Ventes' // ✅ AJOUTÉ ICI
     ];
     return titles[_selectedIndex];
   }

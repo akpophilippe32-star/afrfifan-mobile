@@ -1,7 +1,8 @@
+import 'dart:async'; // ✅ AJOUTE CETTE LIGNE ICI
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../services/dashboard_service.dart';
-import 'withdrawal_screen.dart'; // Ajuste le chemin si nécessaire
+import 'withdrawal_screen.dart';
 
 class OverviewTab extends StatefulWidget {
   const OverviewTab({Key? key}) : super(key: key);
@@ -17,30 +18,87 @@ class _OverviewTabState extends State<OverviewTab> {
   double _balance = 0;
   double _totalEarned = 0;
   int _subscribersCount = 0;
+  int _productSalesCount = 0;
   bool _isLoading = true;
+
+  StreamSubscription? _salesSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _listenToNewSales();
   }
 
-  Future<void> _loadData() async {
+  @override
+  void dispose() {
+    _salesSubscription?.cancel();
+    super.dispose();
+  }
+
+  // ✅ Écoute les nouvelles ventes en temps réel
+  void _listenToNewSales() {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _salesSubscription = supabase
+        .from('product_purchases:creator_id=eq.$userId')
+        .stream(primaryKey: ['id'])
+        .listen((data) {
+          debugPrint('🔔 Nouvelle vente détectée ! Rechargement du solde...');
+          _loadData();
+        });
+  }
+
+    Future<void> _loadData() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
     setState(() => _isLoading = true);
     try {
+      // 1. Charger les stats générales (abonnés, etc.)
       final overview = await _dashboardService.getDashboardOverview(userId);
-      setState(() {
-        _balance = overview['balance'];
-        _totalEarned = overview['totalEarnings'];
-        _subscribersCount = overview['subscribers']['total'];
-        _isLoading = false;
-      });
+      
+      // 2. Charger le solde du wallet
+      final walletData = await supabase
+          .from('wallets')
+          .select('balance, total_earned')
+          .eq('creator_id', userId)
+          .maybeSingle();
+
+      // ✅ DIAGNOSTIC : On affiche exactement ce que Supabase renvoie
+      debugPrint('🔍 WALLET DATA REÇU DE SUPABASE : $walletData');
+      debugPrint('🔍 OVERVIEW DATA REÇU DU SERVICE : $overview');
+
+      // 3. Compter le nombre de ventes de produits
+      final salesCountResponse = await supabase
+          .from('product_purchases')
+          .select('id')
+          .eq('creator_id', userId)
+          .eq('payment_status', 'completed');
+
+      if (mounted) {
+        setState(() {
+          // On force l'utilisation des données du wallet SI elles existent
+          final dbBalance = (walletData?['balance'] as num?)?.toDouble();
+          final dbTotalEarned = (walletData?['total_earned'] as num?)?.toDouble();
+          
+          // Si dbBalance est null (à cause de RLS), on utilise le fallback
+          _balance = dbBalance ?? overview['balance'] ?? 0.0;
+          _totalEarned = dbTotalEarned ?? overview['totalEarnings'] ?? 0.0;
+          
+          _subscribersCount = overview['subscribers']?['total'] ?? 0;
+          _productSalesCount = salesCountResponse.length;
+          _isLoading = false;
+          
+          // ✅ DIAGNOSTIC : On affiche ce qui va être affiché à l'écran
+          debugPrint('💰 BALANCE FINALE QUI VA S\'AFFICHER : $_balance');
+          debugPrint('💰 TOTAL EARNED FINAL QUI VA S\'AFFICHER : $_totalEarned');
+        });
+      }
     } catch (e) {
       debugPrint('❌ Erreur chargement overview: $e');
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -91,8 +149,6 @@ class _OverviewTabState extends State<OverviewTab> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () {
-                            // Astuce : on remonte l'info au parent pour changer d'onglet, ou on utilise un Global Key. 
-                            // Pour simplifier ici, on affiche juste un message ou on peut naviguer directement.
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voir l\'historique dans l\'onglet Portefeuille'), backgroundColor: Color(0xFF8B5CF6)));
                           },
                           icon: const Icon(Icons.history, size: 18),
@@ -113,6 +169,18 @@ class _OverviewTabState extends State<OverviewTab> {
                 _buildStatCard('$_subscribersCount', 'Abonnés', Icons.people_outline),
                 const SizedBox(width: 12),
                 _buildStatCard(_formatMoney(_totalEarned), 'Gains totaux', Icons.trending_up),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _buildStatCard('$_productSalesCount', 'Ventes Boutique', Icons.shopping_bag_outlined),
+                const SizedBox(width: 12),
+                _buildStatCard(
+                  _balance > 0 ? _formatMoney(_balance) : '0 FCFA', 
+                  'À retirer', 
+                  Icons.account_balance
+                ),
               ],
             ),
           ],

@@ -127,132 +127,155 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showHamburgerMenu() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade700,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'Menu',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: const Color(0xFF1A1A1A),
+    isScrollControlled: true, // ✅ Permet au sheet de s'adapter à la hauteur
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (context) => DraggableScrollableSheet(
+      initialChildSize: 0.75, // ✅ Commence à 75% de l'écran
+      minChildSize: 0.5,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade700,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            
-            // 1. Abonnés
-            _buildMenuItem(
-              icon: Icons.group,
-              label: 'Abonnés',
-              subtitle: 'Voir qui te suit',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MyFollowersScreen()),
-                );
-              },
-            ),
-            
-            // 2. Suivis
-            _buildMenuItem(
-              icon: Icons.people,
-              label: 'Suivis',
-              subtitle: 'Voir qui tu suis',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MyFollowingScreen()),
-                );
-              },
-            ),
-            
-            // 3. Abonnements
-            _buildMenuItem(
-              icon: Icons.star,
-              label: 'Abonnements',
-              subtitle: 'Tes abonnements payants',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MySubscriptionsScreen()),
-                );
-              },
-            ),
-
-            // ✅ 4. NOUVEAU : Mes achats
-            _buildMenuItem(
-              icon: Icons.shopping_bag,
-              label: 'Mes achats',
-              subtitle: 'Tes produits et contenus achetés',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MyPurchasesScreen()),
-                );
-              },
-            ),
-            
-            const Divider(color: Color(0xFF2A2A2A), height: 1),
-            
-            // ✅ 5. Téléchargé
-            _buildMenuItem(
-              icon: Icons.download_for_offline,
-              label: 'Téléchargé',
-              subtitle: 'Tes vidéos et images hors ligne',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const DownloadsScreen()),
-                );
-              },
-            ),
-            
-            // 6. Paramètres
-            _buildMenuItem(
-              icon: Icons.settings,
-              label: 'Paramètres',
-              subtitle: 'Configuration du compte',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => SettingsScreen(username: _profile?['full_name']),
+              const SizedBox(height: 20),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Menu',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // ✅ Liste scrollable des éléments du menu
+              Flexible(
+                child: ListView(
+                  controller: scrollController,
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    // 1. Abonnés
+                    _buildMenuItem(
+                      icon: Icons.group,
+                      label: 'Abonnés',
+                      subtitle: 'Voir qui te suit',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const MyFollowersScreen()),
+                        );
+                      },
+                    ),
+                    
+                    // 2. Suivis
+                    _buildMenuItem(
+                      icon: Icons.people,
+                      label: 'Suivis',
+                      subtitle: 'Voir qui tu suis',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const MyFollowingScreen()),
+                        );
+                      },
+                    ),
+                    
+                    // 3. Abonnements
+                    _buildMenuItem(
+                      icon: Icons.star,
+                      label: 'Abonnements',
+                      subtitle: 'Tes abonnements payants',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const MySubscriptionsScreen()),
+                        );
+                      },
+                    ),
+
+                    // 4. Mes achats
+                    _buildMenuItem(
+                      icon: Icons.shopping_bag,
+                      label: 'Mes achats',
+                      subtitle: 'Tes produits et contenus achetés',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const MyPurchasesScreen()),
+                        );
+                      },
+                    ),
+                    
+                    const Divider(color: Color(0xFF2A2A2A), height: 1),
+                    
+                    // 5. Téléchargé
+                    _buildMenuItem(
+                      icon: Icons.download_for_offline,
+                      label: 'Téléchargé',
+                      subtitle: 'Tes vidéos et images hors ligne',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const DownloadsScreen()),
+                        );
+                      },
+                    ),
+                    
+                    // 6. Paramètres
+                    _buildMenuItem(
+                      icon: Icons.settings,
+                      label: 'Paramètres',
+                      subtitle: 'Configuration du compte',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SettingsScreen(username: _profile?['full_name']),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
 
   Widget _buildMenuItem({
     required IconData icon,

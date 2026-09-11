@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-// ✅ 1. IMPORTS POUR LA NAVIGATION
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 import '../creator/creator_profile_screen.dart';
-import '../explore/trending_creators_screen.dart'; // <-- Ajouté pour le bouton "Découvrir"
+import '../explore/trending_creators_screen.dart';
 
-// Modèle de données pour les personnes suivies
 class FollowingData {
   final String followingId;
   final String username;
@@ -35,19 +33,8 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
   final supabase = Supabase.instance.client;
   List<FollowingData> _followings = [];
   bool _isLoading = true;
-  
-  // ✅ Pour gérer l'état de chargement de chaque bouton individuellement
-  final Set<String> _unfollowingIds = {};
 
-  // Couleurs identiques à Next.js
-  final Color bg = const Color(0xFF0A0A0A);
-  final Color card = const Color(0xFF1A1A1A);
-  final Color border = const Color(0xFF2A2A2A);
-  final Color primary = const Color(0xFF8B5CF6);
-  final Color text = const Color(0xFFFFFFFF);
-  final Color textMuted = const Color(0xFF9CA3AF);
-  final Color green = const Color(0xFF10B981);
-  final Color danger = const Color(0xFFEF4444);
+  final Set<String> _unfollowingIds = {};
 
   @override
   void initState() {
@@ -61,7 +48,6 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
       final user = supabase.auth.currentUser;
       if (user == null) return;
 
-      // 1. Récupérer tous les following_id que cet utilisateur suit
       final followsRes = await supabase
           .from('follows')
           .select('following_id, created_at')
@@ -76,20 +62,17 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
         return;
       }
 
-      // 2. Récupérer les profils de ces personnes suivies
       final followingIds = (followsRes as List).map((f) => f['following_id'] as String).toList();
-      
+
       final profilesRes = await supabase
           .from('profiles')
           .select('id, username, full_name, avatar_url, is_verified')
           .inFilter('id', followingIds);
 
-      // Créer une map pour une fusion rapide des données
       final profilesMap = {
         for (var p in profilesRes) p['id'] as String: p
       };
 
-      // 3. Fusionner les données pour l'affichage
       final mergedFollowings = followsRes.map((follow) {
         final profile = profilesMap[follow['following_id']] ?? {};
         return FollowingData(
@@ -102,11 +85,10 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
         );
       }).toList();
 
-      // ✅ 4. FILTRE DE SÉCURITÉ : On retire l'utilisateur actuel de la liste
       final filteredFollowings = mergedFollowings.where((f) => f.followingId != user.id).toList();
 
       setState(() {
-        _followings = filteredFollowings; // On utilise la liste filtrée
+        _followings = filteredFollowings;
         _isLoading = false;
       });
     } catch (e) {
@@ -115,57 +97,45 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
     }
   }
 
-  // ✅ Fonction pour se désabonner d'un utilisateur (Corrigée pour Supabase v2+)
   Future<void> _handleUnfollow(String targetUserId) async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
-    // Ajouter l'ID à l'ensemble des chargements pour désactiver le bouton
     setState(() => _unfollowingIds.add(targetUserId));
 
     try {
-      // Dans supabase_flutter v2+, delete() lève une exception en cas d'erreur.
       await supabase
           .from('follows')
           .delete()
           .eq('follower_id', user.id)
           .eq('following_id', targetUserId);
 
-      // Suppression réussie : on retire l'élément de la liste locale
       setState(() {
         _followings.removeWhere((f) => f.followingId == targetUserId);
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Désabonnement réussi'), 
-            backgroundColor: Colors.green
-          ),
+          const SnackBar(content: Text('Désabonnement réussi'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       debugPrint('❌ Erreur unfollow: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Impossible de se désabonner pour le moment.'), 
-            backgroundColor: Colors.red
-          ),
+          const SnackBar(content: Text('Impossible de se désabonner pour le moment.'), backgroundColor: Colors.red),
         );
       }
     } finally {
-      // Retirer l'ID de l'ensemble des chargements, que ça ait réussi ou échoué
       if (mounted) {
         setState(() => _unfollowingIds.remove(targetUserId));
       }
     }
   }
 
-  // ✅ Fonction de navigation (avec sécurité en cas de bug)
   void _handleViewProfile(String targetUserId) {
     final currentUserId = supabase.auth.currentUser?.id;
-    
+
     if (currentUserId == targetUserId) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ceci est votre propre profil')),
@@ -182,32 +152,52 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? const Color(0xFF9CA3AF) : Colors.black54;
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: bg,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Mes Suivis', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
+        title: Text(
+          'Mes Suivis',
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 20),
+        ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
+          ? Center(child: CircularProgressIndicator(color: accentColor))
           : _followings.isEmpty
-              ? _buildEmptyState()
+              ? _buildEmptyState(isDark, textColor, subTextColor, accentColor)
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: _followings.length,
                   itemBuilder: (context, index) {
-                    return _buildFollowingCard(_followings[index]);
+                    return _buildFollowingCard(_followings[index], isDark, textColor, subTextColor);
                   },
                 ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(bool isDark, Color textColor, Color subTextColor, Color accentColor) {
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -216,34 +206,40 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
           children: [
             const Text('👥', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Tu ne suis personne pour le moment',
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               'Explore la page Découvrir pour trouver des créateurs à suivre.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: textMuted, fontSize: 14),
+              style: TextStyle(color: subTextColor, fontSize: 14),
             ),
             const SizedBox(height: 24),
-            
-            // ✅ BOUTON MODIFIÉ : Redirige vers l'écran d'exploration des créateurs
+
+            // ✅ Bouton "Découvrir des créateurs" : noir en clair / blanc en sombre
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const TrendingCreatorsScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const TrendingCreatorsScreen()),
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: primary,
+                backgroundColor: accentColor,
+                foregroundColor: accentTextColor,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
-              child: const Text('Découvrir des créateurs', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              child: Text(
+                'Découvrir des créateurs',
+                style: TextStyle(
+                  color: accentTextColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
             )
           ],
         ),
@@ -251,15 +247,25 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
     );
   }
 
-  Widget _buildFollowingCard(FollowingData following) {
+  Widget _buildFollowingCard(
+    FollowingData following,
+    bool isDark,
+    Color textColor,
+    Color subTextColor,
+  ) {
     final isUnfollowing = _unfollowingIds.contains(following.followingId);
+
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final avatarBg = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final avatarIcon = isDark ? Colors.white : Colors.black54;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: card,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
+        border: Border.all(color: borderColor),
       ),
       child: InkWell(
         onTap: () => _handleViewProfile(following.followingId),
@@ -268,24 +274,24 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // Avatar
+              // ─── AVATAR ───
               Container(
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: border,
+                  color: avatarBg,
                   image: following.avatarUrl != null
                       ? DecorationImage(image: NetworkImage(following.avatarUrl!), fit: BoxFit.cover)
                       : null,
                 ),
-                child: following.avatarUrl == null 
-                    ? const Icon(Icons.person, size: 28, color: Colors.white) 
+                child: following.avatarUrl == null
+                    ? Icon(Icons.person, size: 28, color: avatarIcon)
                     : null,
               ),
               const SizedBox(width: 16),
-              
-              // Infos
+
+              // ─── INFOS ───
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,7 +301,11 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
                         Flexible(
                           child: Text(
                             following.fullName ?? following.username,
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -309,18 +319,18 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
                     const SizedBox(height: 4),
                     Text(
                       '@${following.username}',
-                      style: TextStyle(color: textMuted, fontSize: 13),
+                      style: TextStyle(color: subTextColor, fontSize: 13),
                     ),
                   ],
                 ),
               ),
 
-              // Bouton Se désabonner
+              // ─── BOUTON "RETIRER" (rouge conservé = action danger) ───
               OutlinedButton(
                 onPressed: isUnfollowing ? null : () => _handleUnfollow(following.followingId),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: danger,
-                  side: BorderSide(color: danger, width: 1.5),
+                  foregroundColor: const Color(0xFFEF4444),
+                  side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 ),
@@ -328,7 +338,10 @@ class _MyFollowingScreenState extends State<MyFollowingScreen> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFEF4444)),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFFEF4444),
+                        ),
                       )
                     : const Text(
                         'Retirer',

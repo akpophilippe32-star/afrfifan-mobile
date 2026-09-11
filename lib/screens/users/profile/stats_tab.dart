@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../services/analytics_service.dart';
-import 'post_stats_detail_screen.dart'; // On va créer cet écran après
+import '../../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
+import 'post_stats_detail_screen.dart';
 
 class StatsTab extends StatefulWidget {
   const StatsTab({super.key});
@@ -13,8 +14,8 @@ class StatsTab extends StatefulWidget {
 class _StatsTabState extends State<StatsTab> {
   final AnalyticsService _analyticsService = AnalyticsService();
   final supabase = Supabase.instance.client;
-  
-  int _selectedPeriod = 7; // 7, 30, ou 90 jours
+
+  int _selectedPeriod = 7;
   Map<String, dynamic> _stats = {};
   List<Map<String, dynamic>> _topPosts = [];
   bool _isLoading = true;
@@ -27,7 +28,7 @@ class _StatsTabState extends State<StatsTab> {
 
   Future<void> _loadStats() async {
     setState(() => _isLoading = true);
-    
+
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) {
       setState(() => _isLoading = false);
@@ -54,33 +55,52 @@ class _StatsTabState extends State<StatsTab> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final inactiveBtnBg = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final inactiveBtnText = isDark ? Colors.white : Colors.black87;
+
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+      return Center(child: CircularProgressIndicator(color: accentColor));
     }
 
     return RefreshIndicator(
       onRefresh: _loadStats,
-      color: const Color(0xFF8B5CF6),
+      color: accentColor,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            //  SÉLECTEUR DE PÉRIODE
+            // ─── SÉLECTEUR DE PÉRIODE ───
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildPeriodButton(7),
+                _buildPeriodButton(7, isDark, accentColor, accentTextColor, inactiveBtnBg, inactiveBtnText),
                 const SizedBox(width: 12),
-                _buildPeriodButton(30),
+                _buildPeriodButton(30, isDark, accentColor, accentTextColor, inactiveBtnBg, inactiveBtnText),
                 const SizedBox(width: 12),
-                _buildPeriodButton(90),
+                _buildPeriodButton(90, isDark, accentColor, accentTextColor, inactiveBtnBg, inactiveBtnText),
               ],
             ),
             const SizedBox(height: 32),
 
-            //  CARTES DE STATISTIQUES
+            // ─── CARTES DE STATISTIQUES ───
             Row(
               children: [
                 Expanded(
@@ -89,6 +109,10 @@ class _StatsTabState extends State<StatsTab> {
                     _formatNumber(_stats['totalViews'] ?? 0),
                     Icons.visibility,
                     Colors.blue,
+                    cardColor,
+                    borderColor,
+                    textColor,
+                    subTextColor,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -98,6 +122,10 @@ class _StatsTabState extends State<StatsTab> {
                     _formatNumber(_stats['newFollowers'] ?? 0),
                     Icons.person_add,
                     Colors.green,
+                    cardColor,
+                    borderColor,
+                    textColor,
+                    subTextColor,
                   ),
                 ),
               ],
@@ -111,6 +139,10 @@ class _StatsTabState extends State<StatsTab> {
                     _formatNumber(_stats['totalLikes'] ?? 0),
                     Icons.favorite,
                     Colors.red,
+                    cardColor,
+                    borderColor,
+                    textColor,
+                    subTextColor,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -119,44 +151,55 @@ class _StatsTabState extends State<StatsTab> {
                     'Total Followers',
                     _formatNumber(_stats['totalFollowers'] ?? 0),
                     Icons.people,
-                    Colors.purple,
+                    // ✅ Violet remplacé par accent
+                    accentColor,
+                    cardColor,
+                    borderColor,
+                    textColor,
+                    subTextColor,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 32),
 
-            //  GRAPHIQUE (Simple - à améliorer avec un package comme fl_chart)
-            const Text(
+            // ─── GRAPHIQUE ───
+            Text(
               'Évolution des vues',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            _buildSimpleChart(),
+            _buildSimpleChart(isDark, accentColor, subTextColor, cardColor),
             const SizedBox(height: 32),
 
-            // 🔥 TOP POSTS
-            const Text(
+            // ─── TOP POSTS ───
+            Text(
               'Vos meilleurs posts',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            ..._topPosts.map((post) => _buildTopPostCard(post)),
+            ..._topPosts.map((post) => _buildTopPostCard(
+                  post,
+                  isDark: isDark,
+                  textColor: textColor,
+                  subTextColor: subTextColor,
+                  cardColor: cardColor,
+                  borderColor: borderColor,
+                )),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPeriodButton(int days) {
+  Widget _buildPeriodButton(
+    int days,
+    bool isDark,
+    Color accentColor,
+    Color accentTextColor,
+    Color inactiveBg,
+    Color inactiveText,
+  ) {
     final isSelected = _selectedPeriod == days;
     return Expanded(
       child: ElevatedButton(
@@ -165,32 +208,50 @@ class _StatsTabState extends State<StatsTab> {
           _loadStats();
         },
         style: ElevatedButton.styleFrom(
-          backgroundColor: isSelected ? const Color(0xFF8B5CF6) : Colors.grey.shade800,
+          // ✅ Actif : noir en clair / blanc en sombre
+          backgroundColor: isSelected ? accentColor : inactiveBg,
+          foregroundColor: isSelected ? accentTextColor : inactiveText,
           padding: const EdgeInsets.symmetric(vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        child: Text('$days jours'),
+        child: Text(
+          '$days jours',
+          style: TextStyle(
+            color: isSelected ? accentTextColor : inactiveText,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+    Color cardColor,
+    Color borderColor,
+    Color textColor,
+    Color subTextColor,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ✅ Couleur sémantique conservée (bleu/vert/rouge/accent)
           Icon(icon, color: color, size: 28),
           const SizedBox(height: 12),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: textColor,
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
@@ -198,29 +259,28 @@ class _StatsTabState extends State<StatsTab> {
           const SizedBox(height: 4),
           Text(
             title,
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
+            style: TextStyle(color: subTextColor, fontSize: 12),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSimpleChart() {
+  Widget _buildSimpleChart(bool isDark, Color accentColor, Color subTextColor, Color cardColor) {
     final viewsByDay = _stats['viewsByDay'] as Map<String, dynamic>? ?? {};
     if (viewsByDay.isEmpty) {
       return Container(
         height: 150,
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: cardColor,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Center(
-          child: Text('Pas assez de données', style: TextStyle(color: Colors.grey)),
+        child: Center(
+          child: Text('Pas assez de données', style: TextStyle(color: subTextColor)),
         ),
       );
     }
 
-    // Trouver la valeur max pour l'échelle
     int maxValue = 1;
     viewsByDay.values.forEach((value) {
       if (value > maxValue) maxValue = value;
@@ -230,7 +290,7 @@ class _StatsTabState extends State<StatsTab> {
       height: 150,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: cardColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -244,21 +304,22 @@ class _StatsTabState extends State<StatsTab> {
             children: [
               Text(
                 '$value',
-                style: const TextStyle(color: Colors.grey, fontSize: 10),
+                style: TextStyle(color: subTextColor, fontSize: 10),
               ),
               const SizedBox(height: 4),
               Container(
                 width: 20,
                 height: height,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6),
+                  // ✅ Barres du graphique : noir en clair / blanc en sombre
+                  color: accentColor,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                entry.key.split('-').last, // Juste le jour
-                style: const TextStyle(color: Colors.grey, fontSize: 10),
+                entry.key.split('-').last,
+                style: TextStyle(color: subTextColor, fontSize: 10),
               ),
             ],
           );
@@ -267,13 +328,21 @@ class _StatsTabState extends State<StatsTab> {
     );
   }
 
-   Widget _buildTopPostCard(Map<String, dynamic> post) {
+  Widget _buildTopPostCard(
+    Map<String, dynamic> post, {
+    required bool isDark,
+    required Color textColor,
+    required Color subTextColor,
+    required Color cardColor,
+    required Color borderColor,
+  }) {
     final views = post['views_count'] ?? 0;
     final likes = post['likes_count'] ?? 0;
-    
+    final placeholderBg = isDark ? Colors.grey.shade800 : Colors.grey.shade200;
+    final placeholderIcon = isDark ? Colors.grey : Colors.black38;
+
     return GestureDetector(
       onTap: () {
-        // ✅ NAVIGATION VERS L'ÉCRAN DE DÉTAILS
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -282,17 +351,16 @@ class _StatsTabState extends State<StatsTab> {
         );
       },
       child: Container(
-        // ... (le reste du code de la carte ne change pas)
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: cardColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF2A2A2A)),
+          border: Border.all(color: borderColor),
         ),
         child: Row(
           children: [
-            // Miniature
+            // ─── MINIATURE ───
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: post['media_url'] != null
@@ -304,48 +372,52 @@ class _StatsTabState extends State<StatsTab> {
                       errorBuilder: (context, error, stackTrace) => Container(
                         width: 60,
                         height: 60,
-                        color: Colors.grey.shade800,
-                        child: const Icon(Icons.image, color: Colors.grey),
+                        color: placeholderBg,
+                        child: Icon(Icons.image, color: placeholderIcon),
                       ),
                     )
                   : Container(
                       width: 60,
                       height: 60,
-                      color: Colors.grey.shade800,
-                      child: const Icon(Icons.image, color: Colors.grey),
+                      color: placeholderBg,
+                      child: Icon(Icons.image, color: placeholderIcon),
                     ),
             ),
             const SizedBox(width: 12),
+
+            // ─── INFOS ───
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
+                      // ✅ Bleu conservé (sémantique "vues")
                       const Icon(Icons.visibility, color: Colors.blue, size: 14),
                       const SizedBox(width: 4),
                       Text(
                         _formatNumber(views),
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style: TextStyle(color: textColor, fontSize: 14),
                       ),
                       const SizedBox(width: 12),
+                      // ✅ Rouge conservé (sémantique "likes")
                       const Icon(Icons.favorite, color: Colors.red, size: 14),
                       const SizedBox(width: 4),
                       Text(
                         _formatNumber(likes),
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style: TextStyle(color: textColor, fontSize: 14),
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Publié le ${_formatDate(post['created_at'])}',
-                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+                    style: TextStyle(color: subTextColor, fontSize: 11),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Colors.grey),
+            Icon(Icons.chevron_right, color: subTextColor),
           ],
         ),
       ),

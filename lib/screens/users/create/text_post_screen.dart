@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin si besoin)
 
 class TextPostScreen extends StatefulWidget {
   const TextPostScreen({super.key});
@@ -15,15 +16,18 @@ class _TextPostScreenState extends State<TextPostScreen> {
   int _charCount = 0;
   final int _maxChars = 500;
 
+  // ✅ Violet retiré, reste des couleurs "safe" pour la lisibilité du texte blanc
   Color _selectedBgColor = Colors.grey.shade800;
-  
+
   final List<Color> _bgColors = [
-    Colors.grey.shade800,
-    const Color(0xFF8B5CF6),
-    Colors.blue.shade700,
-    Colors.purple.shade700,
-    Colors.red.shade700,
-    Colors.orange.shade700,
+    Colors.grey.shade800,      // Gris (par défaut)
+    const Color(0xFF1A1A1A),    // Noir doux
+    Colors.blue.shade700,       // Bleu
+    Colors.indigo.shade700,     // Indigo
+    Colors.red.shade700,        // Rouge
+    Colors.orange.shade800,     // Orange foncé
+    Colors.teal.shade700,       // Sarcelle
+    Colors.pink.shade700,       // Rose foncé
   ];
 
   @override
@@ -46,7 +50,6 @@ class _TextPostScreenState extends State<TextPostScreen> {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('Utilisateur non connecté');
 
-      // Convertir la couleur en hex string
       String colorHex = '#${_selectedBgColor.value.toRadixString(16).padLeft(8, '0')}';
 
       await _supabase.from('posts').insert({
@@ -77,27 +80,60 @@ class _TextPostScreenState extends State<TextPostScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+    final borderColor = isDark ? Colors.white : Colors.black;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          icon: Icon(Icons.close, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           TextButton(
             onPressed: _isPosting ? null : _publishPost,
-            child: _isPosting 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Publier', style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold, fontSize: 16)),
+            child: _isPosting
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      // ✅ Loader noir/blanc
+                      color: accentColor,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : Text(
+                    'Publier',
+                    style: TextStyle(
+                      // ✅ Bouton publier noir/blanc
+                      color: accentColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
           ),
         ],
       ),
       body: Column(
         children: [
-          // ZONE DE TEXTE
+          // ─── ZONE DE TEXTE (la couleur est choisie par l'utilisateur) ───
           Expanded(
             child: Container(
               width: double.infinity,
@@ -111,7 +147,11 @@ class _TextPostScreenState extends State<TextPostScreen> {
                 controller: _textController,
                 maxLength: _maxChars,
                 onChanged: (value) => setState(() => _charCount = value.length),
-                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w500,
+                ),
                 decoration: const InputDecoration(
                   hintText: 'Quoi de neuf ?',
                   hintStyle: TextStyle(color: Colors.white54, fontSize: 24),
@@ -124,8 +164,8 @@ class _TextPostScreenState extends State<TextPostScreen> {
               ),
             ),
           ),
-          
-          // COMPTEUR DE CARACTÈRES
+
+          // ─── COMPTEUR ───
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
@@ -134,26 +174,30 @@ class _TextPostScreenState extends State<TextPostScreen> {
                 Text(
                   '$_charCount / $_maxChars',
                   style: TextStyle(
-                    color: _charCount > _maxChars ? Colors.red : Colors.grey,
+                    color: _charCount > _maxChars ? Colors.red : subTextColor,
                     fontSize: 12,
                   ),
                 ),
               ],
             ),
           ),
-          
+
           const SizedBox(height: 20),
-          
-          // SÉLECTION DE COULEUR DE FOND
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
+
+          // ─── TITRE COULEUR DE FOND ───
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Couleur de fond', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Couleur de fond',
+                style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+              ),
             ),
           ),
           const SizedBox(height: 10),
-          
+
+          // ─── PALETTE DE COULEURS ───
           SizedBox(
             height: 60,
             child: ListView.builder(
@@ -163,7 +207,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
               itemBuilder: (context, index) {
                 final color = _bgColors[index];
                 final isSelected = color.value == _selectedBgColor.value;
-                
+
                 return GestureDetector(
                   onTap: () => setState(() => _selectedBgColor = color),
                   child: Container(
@@ -174,18 +218,23 @@ class _TextPostScreenState extends State<TextPostScreen> {
                       color: color,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isSelected ? Colors.white : Colors.transparent,
+                        // ✅ Bordure blanche en sombre / noire en clair (selon le fond choisi)
+                        color: isSelected ? borderColor : Colors.transparent,
                         width: 3,
                       ),
-                      boxShadow: isSelected ? [BoxShadow(color: Colors.white.withOpacity(0.5), blurRadius: 8)] : [],
+                      boxShadow: isSelected
+                          ? [BoxShadow(color: borderColor.withOpacity(0.5), blurRadius: 8)]
+                          : [],
                     ),
-                    child: isSelected ? const Icon(Icons.check, color: Colors.white, size: 20) : null,
+                    child: isSelected
+                        ? const Icon(Icons.check, color: Colors.white, size: 20)
+                        : null,
                   ),
                 );
               },
             ),
           ),
-          
+
           const SizedBox(height: 30),
         ],
       ),

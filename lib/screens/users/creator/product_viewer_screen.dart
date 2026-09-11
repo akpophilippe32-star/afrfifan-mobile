@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart'; // ✅ Pour lire les PDF
+import 'package:flutter_pdfview/flutter_pdfview.dart';
+import '../../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin selon ton arborescence)
 
 class ProductViewerScreen extends StatefulWidget {
   final String localFilePath;
@@ -14,7 +15,6 @@ class ProductViewerScreen extends StatefulWidget {
     required this.mediaType,
     required this.title,
   });
-
 
   @override
   State<ProductViewerScreen> createState() => _ProductViewerScreenState();
@@ -33,10 +33,9 @@ class _ProductViewerScreenState extends State<ProductViewerScreen> {
   }
 
   Future<void> _initVideo() async {
-    // ✅ Lit la vidéo directement depuis le fichier local (pas d'internet)
     final file = File(widget.localFilePath);
     _videoController = VideoPlayerController.file(file);
-    
+
     await _videoController!.initialize();
     if (mounted) {
       setState(() => _isVideoInitialized = true);
@@ -53,45 +52,60 @@ class _ProductViewerScreenState extends State<ProductViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          icon: Icon(Icons.close, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: TextStyle(color: textColor, fontSize: 16),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      body: _buildViewer(),
+      body: _buildViewer(isDark),
     );
   }
 
-  Widget _buildViewer() {
+  Widget _buildViewer(bool isDark) {
     final file = File(widget.localFilePath);
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
 
     // ─── 1. SI C'EST UN PDF ──────────────────────────────────────
     if (widget.mediaType == 'file' || widget.title.toLowerCase().contains('.pdf')) {
       return PDFView(
-        filePath: widget.localFilePath, // ✅ Lit le fichier local en toute sécurité
+        filePath: widget.localFilePath,
         enableSwipe: true,
         swipeHorizontal: false,
         autoSpacing: true,
         pageFling: true,
         onError: (error) => debugPrint('❌ Erreur PDF: $error'),
       );
-    } 
-    
+    }
+
     // ─── 2. SI C'EST UNE VIDÉO ───────────────────────────────────
     else if (widget.mediaType == 'video') {
       if (!_isVideoInitialized) {
-        return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+        return Center(child: CircularProgressIndicator(color: accentColor));
       }
       return GestureDetector(
         onTap: () {
@@ -108,8 +122,8 @@ class _ProductViewerScreenState extends State<ProductViewerScreen> {
           ),
         ),
       );
-    } 
-    
+    }
+
     // ─── 3. SI C'EST UNE IMAGE ───────────────────────────────────
     else if (widget.mediaType == 'image') {
       return InteractiveViewer(
@@ -118,26 +132,28 @@ class _ProductViewerScreenState extends State<ProductViewerScreen> {
         minScale: 0.5,
         maxScale: 4.0,
         child: Image.file(
-          file, // ✅ Lit l'image locale
+          file,
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) {
-            return const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 60));
+            return Center(
+              child: Icon(Icons.broken_image, color: subTextColor, size: 60),
+            );
           },
         ),
       );
-    } 
-    
+    }
+
     // ─── 4. FORMAT NON RECONNU ───────────────────────────────────
     else {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, color: Colors.grey, size: 60),
+            Icon(Icons.error_outline, color: subTextColor, size: 60),
             const SizedBox(height: 16),
-            const Text(
-              'Format de fichier non pris en charge', 
-              style: TextStyle(color: Colors.white, fontSize: 16),
+            Text(
+              'Format de fichier non pris en charge',
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
               textAlign: TextAlign.center,
             ),
           ],

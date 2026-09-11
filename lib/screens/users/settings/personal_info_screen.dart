@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../theme/app_colors.dart'; // ✅ Pour utiliser ta couleur primaire
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 
 class PersonalInfoScreen extends StatefulWidget {
   const PersonalInfoScreen({super.key});
@@ -12,8 +12,8 @@ class PersonalInfoScreen extends StatefulWidget {
 class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
-  final _emailController = TextEditingController(); 
-  
+  final _emailController = TextEditingController();
+
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -93,23 +93,44 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final fieldBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final readonlyBg = isDark ? const Color(0xFF151515) : const Color(0xFFE5E7EB);
+    final borderColor = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+    final disabledBg = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final disabledText = isDark ? Colors.grey.shade500 : Colors.black38;
+
     return Scaffold(
-      backgroundColor: Colors.black, // ✅ FOND NOIR
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Informations personnelles',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? Center(child: CircularProgressIndicator(color: accentColor))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Form(
@@ -117,17 +138,18 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Modifiez vos informations publiques visibles par les autres utilisateurs.',
-                      style: TextStyle(color: Colors.grey, fontSize: 14),
+                      style: TextStyle(color: subTextColor, fontSize: 14),
                     ),
                     const SizedBox(height: 24),
 
-                    // --- CHAMP NOM D'UTILISATEUR ---
-                    _buildInputLabel("Nom d'utilisateur"),
+                    // ─── NOM D'UTILISATEUR ───
+                    _buildInputLabel("Nom d'utilisateur", textColor),
                     TextFormField(
                       controller: _usernameController,
-                      style: const TextStyle(color: Colors.white), // ✅ TEXTE BLANC
+                      style: TextStyle(color: textColor),
+                      cursorColor: accentColor,
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return "Le nom d'utilisateur ne peut pas être vide";
@@ -137,36 +159,45 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                       decoration: _buildInputDecoration(
                         hintText: "Ton pseudo",
                         prefixIcon: Icons.person_outline,
+                        fieldBg: fieldBg,
+                        subTextColor: subTextColor,
+                        accentColor: accentColor,
+                        borderColor: borderColor,
                       ),
                     ),
                     const SizedBox(height: 20),
 
-                    // --- CHAMP EMAIL (Lecture seule) ---
-                    _buildInputLabel("Adresse Email (Non modifiable)"),
+                    // ─── EMAIL (lecture seule) ───
+                    _buildInputLabel("Adresse Email (Non modifiable)", textColor),
                     TextFormField(
                       controller: _emailController,
                       readOnly: true,
-                      style: const TextStyle(color: Colors.grey), // ✅ TEXTE GRIS POUR LECTURE SEULE
+                      style: TextStyle(color: subTextColor),
                       decoration: _buildInputDecoration(
                         hintText: "email@exemple.com",
                         prefixIcon: Icons.email_outlined,
+                        fieldBg: fieldBg,
+                        subTextColor: subTextColor,
+                        accentColor: accentColor,
+                        borderColor: borderColor,
                       ).copyWith(
-                        fillColor: const Color(0xFF151515), // ✅ LÉGÈREMENT PLUS FONCÉ POUR INDiquer "désactivé"
+                        fillColor: readonlyBg,
                         filled: true,
                       ),
                     ),
                     const SizedBox(height: 32),
 
-                    // 🟪 --- BOUTON ENREGISTRER ---
+                    // ─── BOUTON ENREGISTRER ───
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: _isSaving ? null : _saveProfile,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary, // ✅ COULEUR PRIMAIRE DE L'APP
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: Colors.grey.shade800,
-                          disabledForegroundColor: Colors.grey.shade500,
+                          // ✅ Bouton : noir en clair / blanc en sombre
+                          backgroundColor: accentColor,
+                          foregroundColor: accentTextColor,
+                          disabledBackgroundColor: disabledBg,
+                          disabledForegroundColor: disabledText,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -174,14 +205,21 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
                         child: _isSaving
-                            ? const SizedBox(
+                            ? SizedBox(
                                 height: 20,
                                 width: 20,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  color: accentTextColor,
+                                  strokeWidth: 2,
+                                ),
                               )
-                            : const Text(
+                            : Text(
                                 'Enregistrer les modifications',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                style: TextStyle(
+                                  color: accentTextColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
                       ),
                     ),
@@ -192,31 +230,46 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
     );
   }
 
-  Widget _buildInputLabel(String label) {
+  Widget _buildInputLabel(String label, Color textColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Text(
         label,
-        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14), // ✅ LABEL BLANC
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: textColor,
+          fontSize: 14,
+        ),
       ),
     );
   }
 
-  InputDecoration _buildInputDecoration({required String hintText, required IconData prefixIcon}) {
+  InputDecoration _buildInputDecoration({
+    required String hintText,
+    required IconData prefixIcon,
+    required Color fieldBg,
+    required Color subTextColor,
+    required Color accentColor,
+    required Color borderColor,
+  }) {
     return InputDecoration(
       hintText: hintText,
-      hintStyle: const TextStyle(color: Colors.grey), // ✅ HINT GRIS
-      prefixIcon: Icon(prefixIcon, color: Colors.grey, size: 20), // ✅ ICÔNE GRISE
+      hintStyle: TextStyle(color: subTextColor),
+      prefixIcon: Icon(prefixIcon, color: subTextColor, size: 20),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      fillColor: const Color(0xFF1A1A1A), // ✅ FOND DU CHAMP GRIS FONCÉ
+      fillColor: fieldBg,
       filled: true,
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade800), // ✅ BORDURE DISCRÈTE
+        borderSide: BorderSide(color: borderColor),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: AppColors.primary, width: 1.5), // ✅ BORDURE VIOLETTE AU FOCUS
+        borderSide: BorderSide(
+          // ✅ Accent (noir en clair / blanc en sombre)
+          color: accentColor,
+          width: 1.5,
+        ),
       ),
     );
   }

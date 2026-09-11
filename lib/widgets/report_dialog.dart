@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 import '../services/report_service.dart';
 
 class ReportDialog extends StatefulWidget {
@@ -73,8 +74,25 @@ class _ReportDialogState extends State<ReportDialog> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildDialog(isDark);
+      },
+    );
+  }
+
+  Widget _buildDialog(bool isDark) {
+    final dialogBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final borderColor = isDark ? Colors.grey : Colors.grey.shade400;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return Dialog(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: dialogBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: double.infinity,
@@ -83,61 +101,81 @@ class _ReportDialogState extends State<ReportDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Signaler ce contenu',
               style: TextStyle(
-                color: Colors.white,
+                color: textColor,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Pourquoi signalez-vous ce contenu ?',
-              style: TextStyle(color: Colors.grey, fontSize: 14),
+              style: TextStyle(color: subTextColor, fontSize: 14),
             ),
             const SizedBox(height: 20),
-            
+
+            // ─── MOTIFS ───
             ..._reasons.map((reason) => RadioListTile<String>(
-              title: Text(reason, style: const TextStyle(color: Colors.white, fontSize: 14)),
+              title: Text(
+                reason,
+                style: TextStyle(color: textColor, fontSize: 14),
+              ),
               value: reason,
               groupValue: _selectedReason,
-              activeColor: const Color(0xFF8B5CF6),
+              // ✅ Radio actif : noir en clair / blanc en sombre
+              activeColor: accentColor,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
               onChanged: (value) {
                 setState(() => _selectedReason = value);
               },
             )),
-            
+
             const SizedBox(height: 20),
-            
+
+            // ─── BOUTONS ───
             Row(
               children: [
+                // ─── ANNULER (outlined) ───
                 Expanded(
                   child: OutlinedButton(
                     onPressed: _isSubmitting ? null : () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.grey),
+                      foregroundColor: textColor,
+                      side: BorderSide(color: borderColor),
                       padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     child: const Text('Annuler'),
                   ),
                 ),
                 const SizedBox(width: 12),
+                // ─── SIGNALER (filled accent) ───
                 Expanded(
                   child: ElevatedButton(
                     onPressed: _isSubmitting ? null : _submitReport,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B5CF6),
+                      // ✅ Bouton : noir en clair / blanc en sombre
+                      backgroundColor: accentColor,
+                      foregroundColor: accentTextColor,
                       padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     child: _isSubmitting
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              color: accentTextColor,
+                              strokeWidth: 2,
+                            ),
                           )
-                        : const Text('Signaler'),
+                        : Text(
+                            'Signaler',
+                            style: TextStyle(color: accentTextColor),
+                          ),
                   ),
                 ),
               ],

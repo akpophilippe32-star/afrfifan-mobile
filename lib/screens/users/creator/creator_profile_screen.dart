@@ -1,17 +1,18 @@
-import 'dart:ui'; // ✅ Pour le flou (blur)
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/messaging_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 import '../messages/chat_screen.dart';
 import 'post_detail_screen.dart';
 import 'subscription_payment_screen.dart';
-import 'product_detail_screen.dart'; // ✅ AJOUTÉ : Import de l'écran de détail du produit
+import 'product_detail_screen.dart';
 import '../../../widgets/tip_dialog.dart';
 import '../../../widgets/report_dialog.dart';
-import '../profile/view_story_screen.dart'; 
-import '../profile/profile_screen.dart'; 
+import '../profile/view_story_screen.dart';
+import '../profile/profile_screen.dart';
 
 class CreatorProfileScreen extends StatefulWidget {
   final String creatorId;
@@ -29,13 +30,13 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
 
   Map<String, dynamic>? _creator;
   List<Map<String, dynamic>> _posts = [];
-  List<Map<String, dynamic>> _shopProducts = []; // ✅ NOUVEAU : Produits de la boutique
+  List<Map<String, dynamic>> _shopProducts = [];
   bool _isLoading = true;
-  bool _isLoadingShop = true; // ✅ NOUVEAU : État de chargement de la boutique
+  bool _isLoadingShop = true;
   bool _isFollowing = false;
   int _followersCount = 0;
   int _postsCount = 0;
-  int _selectedTab = 0; // 0 = Posts, 1 = Boutique, 2 = À propos
+  int _selectedTab = 0;
 
   List<Map<String, dynamic>> _stories = [];
   bool _hasActiveStories = false;
@@ -46,8 +47,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   bool get _isSubscribed => _currentSubscription != null;
   bool get _isProSubscriber => _currentSubscription?['tier_type'] == 'pro';
   bool get _isPremiumSubscriber => _currentSubscription?['tier_type'] == 'premium';
-
-  final Color brandViolet = const Color(0xFF8B5CF6);
 
   @override
   void initState() {
@@ -75,11 +74,11 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
       await Future.wait([
         _loadCreatorProfile(),
         _loadCreatorPosts(),
-        _loadCreatorShop(), // ✅ NOUVEAU : Charge la boutique
+        _loadCreatorShop(),
         _checkIfFollowing(),
         _loadFollowersCount(),
         _checkSubscriptionStatus(),
-        _loadCreatorStories(), 
+        _loadCreatorStories(),
       ]);
     } catch (e) {
       debugPrint('❌ Erreur chargement données créateur: $e');
@@ -113,13 +112,13 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     try {
       final response = await supabase
           .from('subscriptions')
-          .select('*') 
+          .select('*')
           .eq('fan_id', currentUser.id)
           .eq('creator_id', widget.creatorId)
           .eq('status', 'active')
           .order('created_at', ascending: false)
           .limit(1)
-          .maybeSingle(); 
+          .maybeSingle();
 
       if (mounted && response != null) {
         setState(() {
@@ -172,7 +171,6 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     }
   }
 
-  // ✅ NOUVEAU : Charge les produits publiés de ce créateur
   Future<void> _loadCreatorShop() async {
     try {
       final response = await supabase
@@ -181,7 +179,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
           .eq('creator_id', widget.creatorId)
           .eq('status', 'published')
           .order('created_at', ascending: false);
-      
+
       if (mounted) {
         setState(() {
           _shopProducts = List<Map<String, dynamic>>.from(response);
@@ -220,7 +218,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
 
       if (mounted) setState(() => _followersCount = List.from(response).length);
     } catch (e) {
-      debugPrint(' Erreur loadFollowersCount: $e');
+      debugPrint('Erreur loadFollowersCount: $e');
     }
   }
 
@@ -247,7 +245,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     }
   }
 
-  void _openChat() {
+  void _openChat(bool isDark) {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -256,22 +254,25 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
       return;
     }
 
-    final bool isCreator = _creator?['role'] == 'creator'; // ✅ CORRIGÉ
+    final bool isCreator = _creator?['role'] == 'creator';
     if (isCreator && !_isProSubscriber) {
+      final dialogBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+      final textColor = isDark ? Colors.white : Colors.black87;
+
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          title: const Row(
+          backgroundColor: dialogBg,
+          title: Row(
             children: [
-              Icon(Icons.lock, color: Color(0xFF8B5CF6)),
-              SizedBox(width: 8),
-              Text('Contenu Réservé', style: TextStyle(color: Colors.white)),
+              Icon(Icons.lock, color: textColor),
+              const SizedBox(width: 8),
+              Text('Contenu Réservé', style: TextStyle(color: textColor)),
             ],
           ),
-          content: const Text(
+          content: Text(
             'Les messages privés avec ce créateur sont réservés aux abonnés PRO. Mettez à niveau votre abonnement pour débloquer cette fonctionnalité.',
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
           ),
           actions: [
             TextButton(
@@ -293,8 +294,11 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                   ),
                 );
               },
-              style: ElevatedButton.styleFrom(backgroundColor: brandViolet),
-              child: const Text('Devenir Abonné PRO', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDark ? Colors.white : Colors.black,
+                foregroundColor: isDark ? Colors.black : Colors.white,
+              ),
+              child: const Text('Devenir Abonné PRO'),
             ),
           ],
         ),
@@ -323,26 +327,28 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
         builder: (context) => ViewStoryScreen(
           stories: _stories,
           creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
-          creatorId: widget.creatorId, 
+          creatorId: widget.creatorId,
           creatorAvatar: _creator?['avatar_url'],
         ),
       ),
     );
   }
 
-  void _openPostDetail(int index) {
-    final bool isCreator = _creator?['role'] == 'creator'; // ✅ CORRIGÉ
-    final bool isPostPremium = _posts[index]['access_level'] == 'premium' || _posts[index]['access_level'] == 'pro'; // ✅ CORRIGÉ
-    
+  void _openPostDetail(int index, bool isDark) {
+    final bool isCreator = _creator?['role'] == 'creator';
+    final bool isPostPremium = _posts[index]['access_level'] == 'premium' || _posts[index]['access_level'] == 'pro';
     final bool isLocked = isCreator && isPostPremium && !_isSubscribed;
 
     if (isLocked) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Abonnez-vous pour voir ce contenu exclusif'), backgroundColor: Color(0xFF8B5CF6)),
+        SnackBar(
+          content: const Text('Abonnez-vous pour voir ce contenu exclusif'),
+          backgroundColor: isDark ? Colors.white24 : Colors.black54,
+        ),
       );
       return;
     }
-    
+
     final creatorName = _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur';
     Navigator.push(
       context,
@@ -367,387 +373,500 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey.shade500 : Colors.black54;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final dividerColor = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     final bool isVerifiedCreator = _creator?['is_verified'] == true;
-    final bool isCreator = _creator?['role'] == 'creator'; // ✅ CORRIGÉ
+    final bool isCreator = _creator?['role'] == 'creator';
     final double premiumPrice = (_creator?['premium_price'] ?? 0).toDouble();
     final double proPrice = (_creator?['pro_price'] ?? 0).toDouble();
     final bool hasPrices = premiumPrice > 0 || proPrice > 0;
 
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Center(child: CircularProgressIndicator(color: textColor)),
+      );
+    }
+
+    if (_creator == null) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Center(child: Text('Profil introuvable', style: TextStyle(color: textColor))),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
-          : _creator == null
-              ? const Center(child: Text('Profil introuvable', style: TextStyle(color: Colors.white)))
-              : CustomScrollView(
-                  slivers: [
-                    SliverAppBar(
-                      expandedHeight: 120,
-                      pinned: true,
-                      backgroundColor: Colors.black,
-                      leading: IconButton(
-                        icon: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(color: Colors.white10, shape: BoxShape.circle),
-                          child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
-                        ),
-                        onPressed: () => Navigator.pop(context),
+      backgroundColor: bgColor,
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 120,
+            pinned: true,
+            backgroundColor: bgColor,
+            leading: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white10 : Colors.black12,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.arrow_back, color: textColor, size: 20),
+              ),
+              onPressed: () => Navigator.pop(context),
+            ),
+            actions: [
+              PopupMenuButton<String>(
+                color: cardColor,
+                icon: Icon(Icons.more_vert, color: textColor, size: 28),
+                onSelected: (value) {
+                  if (value == 'report') {
+                    showDialog(
+                      context: context,
+                      builder: (context) => ReportDialog(
+                        targetId: widget.creatorId,
+                        targetType: 'profile',
                       ),
-                      actions: [
-                        PopupMenuButton<String>(
-                          color: const Color(0xFF1A1A1A),
-                          icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
-                          onSelected: (value) {
-                            if (value == 'report') {
-                              showDialog(
-                                context: context,
-                                builder: (context) => ReportDialog(
-                                  targetId: widget.creatorId,
-                                  targetType: 'profile',
-                                ),
-                              );
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            const PopupMenuItem<String>(
-                              value: 'report',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.flag_outlined, color: Colors.redAccent, size: 20),
-                                  SizedBox(width: 12),
-                                  Text('Signaler ce profil', style: TextStyle(color: Colors.white)),
-                                ],
+                    );
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem<String>(
+                    value: 'report',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flag_outlined, color: Colors.redAccent, size: 20),
+                        const SizedBox(width: 12),
+                        Text('Signaler ce profil', style: TextStyle(color: textColor)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 8),
+            ],
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                // ✅ Plus de gradient violet
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE5E7EB),
+                ),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Stack(
+                        children: [
+                          GestureDetector(
+                            onTap: _hasActiveStories ? _openStoriesViewer : null,
+                            child: Container(
+                              padding: _hasActiveStories ? const EdgeInsets.all(3) : EdgeInsets.zero,
+                              decoration: _hasActiveStories
+                                  ? BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: accentColor, width: 2),
+                                    )
+                                  : null,
+                              child: CircleAvatar(
+                                radius: 50,
+                                backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                                backgroundImage: _creator?['avatar_url'] != null
+                                    ? NetworkImage(_creator!['avatar_url'].toString())
+                                    : null,
+                                child: _creator?['avatar_url'] == null
+                                    ? Icon(Icons.person, color: textColor, size: 50)
+                                    : null,
                               ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      flexibleSpace: FlexibleSpaceBar(
-                        background: Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(colors: [Color(0xFF1a1a2e), Color(0xFF2d1b69)], begin: Alignment.topLeft, end: Alignment.bottomRight),
                           ),
-                        ),
+                          Positioned(
+                            bottom: 5,
+                            right: 5,
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: bgColor, width: 2),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
+                      const SizedBox(width: 16),
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Stack(
-                                  children: [
-                                    GestureDetector(
-                                      onTap: _hasActiveStories ? _openStoriesViewer : null,
-                                      child: Container(
-                                        padding: _hasActiveStories ? const EdgeInsets.all(3) : EdgeInsets.zero,
-                                        decoration: _hasActiveStories
-                                            ? const BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                gradient: LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)]),
-                                              )
-                                            : null,
-                                        child: CircleAvatar(
-                                          radius: 50,
-                                          backgroundColor: Colors.grey.shade800,
-                                          backgroundImage: _creator?['avatar_url'] != null 
-                                              ? NetworkImage(_creator!['avatar_url'].toString()) 
-                                              : null,
-                                          child: _creator?['avatar_url'] == null 
-                                              ? const Icon(Icons.person, color: Colors.white, size: 50) 
-                                              : null,
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      bottom: 5, right: 5,
-                                      child: Container(
-                                        width: 16, height: 16,
-                                        decoration: BoxDecoration(
-                                          color: Colors.green, 
-                                          shape: BoxShape.circle, 
-                                          border: Border.all(color: Colors.black, width: 2)
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              (_creator?['full_name'] ?? _creator?['username'] ?? 'Utilisateur').toString(),
-                                              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          if (isVerifiedCreator) ...[
-                                            const SizedBox(width: 6),
-                                            const Icon(Icons.verified, color: Color(0xFF8B5CF6), size: 22),
-                                          ],
-                                        ],
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text('@${_creator?['username'] ?? 'utilisateur'}', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
-                                    ],
+                                Flexible(
+                                  child: Text(
+                                    (_creator?['full_name'] ?? _creator?['username'] ?? 'Utilisateur').toString(),
+                                    style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  flex: 2,
-                                  child: ElevatedButton(
-                                    onPressed: _toggleFollow,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: _isFollowing ? Colors.grey.shade800 : brandViolet,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    ),
-                                    child: Text(_isFollowing ? 'Suivi' : 'Suivre'),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  flex: 1,
-                                  child: OutlinedButton.icon(
-                                    onPressed: () {
-                                      showDialog(
-                                        context: context,
-                                        builder: (context) => TipDialog(
-                                          creatorId: widget.creatorId,
-                                          creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Utilisateur',
-                                        ),
-                                      );
-                                    },
-                                    icon: const Icon(Icons.local_cafe, size: 18),
-                                    label: const Text('Tip'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: brandViolet,
-                                      side: BorderSide(color: brandViolet),
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _openChat,
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                  side: BorderSide(color: isCreator && !_isProSubscriber ? Colors.orange : Colors.grey.shade700),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                ),
-                                icon: Icon(
-                                  isCreator && !_isProSubscriber ? Icons.lock_outline : Icons.message_outlined, 
-                                  size: 18
-                                ),
-                                label: Text(
-                                  isCreator && !_isProSubscriber ? 'Message (Nécessite PRO)' : 'Message privé',
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 16),
-                            if (_creator?['bio'] != null && _creator!['bio'].toString().isNotEmpty)
-                              Text(_creator!['bio'].toString(), style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4)),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                _buildStatItem(Icons.group, _formatCount(_followersCount), 'Abonnés'),
-                                Container(width: 1, height: 40, color: Colors.grey.shade800),
-                                _buildStatItem(Icons.grid_view, _formatCount(_postsCount), 'Posts'),
-                              ],
-                            ),
-                            const SizedBox(height: 24),
-                            
-                            if (isCreator && hasPrices) ...[
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text('Abonnements', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                if (isVerifiedCreator) ...[
+                                  const SizedBox(width: 6),
+                                  Icon(Icons.verified, color: textColor, size: 22),
                                 ],
-                              ),
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                height: 280,
-                                child: ListView(
-                                  scrollDirection: Axis.horizontal,
-                                  children: [
-                                    if (premiumPrice > 0)
-                                      _buildMembershipCard(
-                                        'PREMIUM', 'Fan', premiumPrice, 
-                                        ['Accès à tous les posts', 'Accès aux lives', 'Contenu exclusif'], 
-                                        isPro: false, currentTier: _currentSubscription?['tier_type'], daysRemaining: _daysRemaining,
-                                      ),
-                                    if (premiumPrice > 0 && proPrice > 0) const SizedBox(width: 16),
-                                    if (proPrice > 0)
-                                      _buildMembershipCard(
-                                        'PRO', 'Membre VIP', proPrice, 
-                                        ['Tout le contenu Premium', 'Vidéos exclusives', 'Messages privés', 'Appels vidéo/audio'], 
-                                        isPro: true, currentTier: _currentSubscription?['tier_type'], daysRemaining: _daysRemaining,
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-                            ],
-                            
-                            // ✅ ONGLETS MODIFIÉS : POSTS, BOUTIQUE, À PROPOS
-                            Row(
-                              children: [
-                                _buildTab('POSTS', 0),
-                                const SizedBox(width: 16),
-                                _buildTab('BOUTIQUE', 1), // ✅ NOUVEAU ONGLET
-                                const SizedBox(width: 16),
-                                _buildTab('À PROPOS', 2),
                               ],
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 2),
+                            Text('@${_creator?['username'] ?? 'utilisateur'}',
+                                style: TextStyle(color: subTextColor, fontSize: 14)),
                           ],
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _toggleFollow,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isFollowing
+                                ? (isDark ? Colors.grey.shade800 : Colors.grey.shade300)
+                                : (isDark ? Colors.white : Colors.black),
+                            foregroundColor: _isFollowing
+                                ? (isDark ? Colors.white70 : Colors.black54)
+                                : (isDark ? Colors.black : Colors.white),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          ),
+                          child: Text(_isFollowing ? 'Suivi' : 'Suivre'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 1,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => TipDialog(
+                                creatorId: widget.creatorId,
+                                creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Utilisateur',
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.local_cafe, size: 18),
+                          label: const Text('Tip'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: textColor,
+                            side: BorderSide(color: borderColor),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openChat(isDark),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: textColor,
+                        side: BorderSide(
+                          color: isCreator && !_isProSubscriber ? Colors.orange : borderColor,
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                      icon: Icon(
+                        isCreator && !_isProSubscriber ? Icons.lock_outline : Icons.message_outlined,
+                        size: 18,
+                      ),
+                      label: Text(
+                        isCreator && !_isProSubscriber ? 'Message (Nécessite PRO)' : 'Message privé',
+                      ),
                     ),
+                  ),
 
-                    // ✅ GESTION DE L'AFFICHAGE SELON L'ONGLET SÉLECTIONNÉ (CORRIGÉ)
-                    if (_selectedTab == 0)
-                      // --- ONGLET POSTS ---
-                      (_posts.isEmpty
-                          ? const SliverToBoxAdapter(
-                              child: Center(child: Padding(padding: EdgeInsets.all(32), child: Text('Aucune publication pour le moment', style: TextStyle(color: Colors.grey)))),
-                            )
-                          : SliverGrid(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) {
-                                  final post = _posts[index];
-                                  final mediaUrl = post['media_url']?.toString();
-                                  final mediaType = post['media_type']?.toString() ?? 'image';
-                                  final likesCount = post['likes_count'] ?? 0;
-                                  final title = post['title'] ?? post['caption'] ?? '';
+                  const SizedBox(height: 16),
+                  if (_creator?['bio'] != null && _creator!['bio'].toString().isNotEmpty)
+                    Text(_creator!['bio'].toString(),
+                        style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 14, height: 1.4)),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatItem(Icons.group, _formatCount(_followersCount), 'Abonnés', accentColor, textColor, subTextColor),
+                      Container(width: 1, height: 40, color: dividerColor),
+                      _buildStatItem(Icons.grid_view, _formatCount(_postsCount), 'Posts', accentColor, textColor, subTextColor),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
 
-                                  final bool isCreatorCheck = _creator?['role'] == 'creator';
-                                  final bool isPostPremiumCheck = post['access_level'] == 'premium' || post['access_level'] == 'pro';
-                                  final bool isLocked = isCreatorCheck && isPostPremiumCheck && !_isSubscribed;
+                  if (isCreator && hasPrices) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Abonnements',
+                            style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 280,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          if (premiumPrice > 0)
+                            _buildMembershipCard(
+                              'PREMIUM', 'Fan', premiumPrice,
+                              ['Accès à tous les posts', 'Accès aux lives', 'Contenu exclusif'],
+                              isPro: false,
+                              currentTier: _currentSubscription?['tier_type'],
+                              daysRemaining: _daysRemaining,
+                              isDark: isDark,
+                              textColor: textColor,
+                              subTextColor: subTextColor,
+                              accentColor: accentColor,
+                            ),
+                          if (premiumPrice > 0 && proPrice > 0) const SizedBox(width: 16),
+                          if (proPrice > 0)
+                            _buildMembershipCard(
+                              'PRO', 'Membre VIP', proPrice,
+                              ['Tout le contenu Premium', 'Vidéos exclusives', 'Messages privés', 'Appels vidéo/audio'],
+                              isPro: true,
+                              currentTier: _currentSubscription?['tier_type'],
+                              daysRemaining: _daysRemaining,
+                              isDark: isDark,
+                              textColor: textColor,
+                              subTextColor: subTextColor,
+                              accentColor: accentColor,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
 
-                                  return GestureDetector(
-                                    onTap: () => _openPostDetail(index),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Container(
-                                        color: Colors.grey.shade900,
-                                        child: Stack(
-                                          fit: StackFit.expand,
+                  Row(
+                    children: [
+                      _buildTab('POSTS', 0, textColor, subTextColor, accentColor),
+                      const SizedBox(width: 16),
+                      _buildTab('BOUTIQUE', 1, textColor, subTextColor, accentColor),
+                      const SizedBox(width: 16),
+                      _buildTab('À PROPOS', 2, textColor, subTextColor, accentColor),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+
+          if (_selectedTab == 0)
+            (_posts.isEmpty
+                ? SliverToBoxAdapter(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text('Aucune publication pour le moment', style: TextStyle(color: subTextColor)),
+                      ),
+                    ),
+                  )
+                : SliverGrid(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final post = _posts[index];
+                        final mediaUrl = post['media_url']?.toString();
+                        final mediaType = post['media_type']?.toString() ?? 'image';
+                        final likesCount = post['likes_count'] ?? 0;
+                        final title = post['title'] ?? post['caption'] ?? '';
+
+                        final bool isCreatorCheck = _creator?['role'] == 'creator';
+                        final bool isPostPremiumCheck = post['access_level'] == 'premium' || post['access_level'] == 'pro';
+                        final bool isLocked = isCreatorCheck && isPostPremiumCheck && !_isSubscribed;
+
+                        return GestureDetector(
+                          onTap: () => _openPostDetail(index, isDark),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  if (mediaUrl != null && mediaUrl.isNotEmpty)
+                                    isLocked
+                                        ? ImageFiltered(
+                                            imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                                            child: Image.network(mediaUrl,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) => Center(
+                                                    child: Icon(Icons.broken_image, color: subTextColor))),
+                                          )
+                                        : Image.network(mediaUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => Center(
+                                                child: Icon(Icons.broken_image, color: subTextColor)))
+                                  else
+                                    Center(
+                                      child: Icon(
+                                        mediaType == 'text' ? Icons.text_fields : Icons.image,
+                                        color: subTextColor,
+                                        size: 32,
+                                      ),
+                                    ),
+
+                                  if (isLocked)
+                                    Container(
+                                      color: Colors.black.withOpacity(0.4),
+                                      child: const Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            if (mediaUrl != null)
-                                              isLocked
-                                                  ? ImageFiltered(
-                                                      imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                                                      child: Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
-                                                    )
-                                                  : Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
-                                            if (isLocked)
-                                              Container(
-                                                color: Colors.black.withOpacity(0.4),
-                                                child: const Center(
-                                                  child: Column(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(Icons.lock, color: Colors.white, size: 32),
-                                                      SizedBox(height: 8),
-                                                      Text('Exclusif', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            Positioned(
-                                              bottom: 0, left: 0, right: 0,
-                                              child: Container(
-                                                padding: const EdgeInsets.all(8),
-                                                decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.black.withOpacity(0.8), Colors.transparent], begin: Alignment.bottomCenter, end: Alignment.topCenter)),
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    if (title.isNotEmpty) Text(title, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                                    const SizedBox(height: 4),
-                                                    Text('❤️ ${_formatCount(likesCount)}', style: TextStyle(color: brandViolet, fontSize: 10, fontWeight: FontWeight.bold)),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            if (mediaType == 'video' && !isLocked)
-                                              const Positioned(
-                                                top: 8, right: 8,
-                                                child: Icon(Icons.play_circle, color: Colors.white, size: 24),
-                                              ),
+                                            Icon(Icons.lock, color: Colors.white, size: 32),
+                                            SizedBox(height: 8),
+                                            Text('Exclusif',
+                                                style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold)),
                                           ],
                                         ),
                                       ),
                                     ),
-                                  );
-                                },
-                                childCount: _posts.length,
-                              ),
-                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 0.75),
-                            ))
-                    else if (_selectedTab == 1)
-                      // --- ✅ ONGLET BOUTIQUE (APPEL DE LA FONCTION) ---
-                      _buildPublicShopGrid()
-                    else
-                      // --- ✅ ONGLET À PROPOS ---
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Biographie', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 8),
-                              Text(_creator?['bio'] ?? 'Aucune biographie pour le moment.', style: const TextStyle(color: Colors.grey, fontSize: 14, height: 1.5)),
-                              const SizedBox(height: 24),
-                              const Text('Membre depuis', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 8),
-                              Text(_creator?['created_at'] != null ? DateTime.parse(_creator!['created_at']).toString().split(' ')[0] : 'Date inconnue', style: const TextStyle(color: Colors.grey, fontSize: 14)),
-                            ],
-                          ),
-                        ),
-                      ),
 
-                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                                  Positioned(
+                                    bottom: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                            colors: [Colors.black.withOpacity(0.8), Colors.transparent],
+                                            begin: Alignment.bottomCenter,
+                                            end: Alignment.topCenter),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          if (title.isNotEmpty)
+                                            Text(title,
+                                                style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis),
+                                          const SizedBox(height: 4),
+                                          Text('❤️ ${_formatCount(likesCount)}',
+                                              style: const TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
+                                  // ✅ Plus d'icône play, seulement le type de média
+                                  if (mediaType == 'text' && !isLocked)
+                                    Positioned(
+                                      top: 8,
+                                      right: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withOpacity(0.5),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Icon(Icons.text_fields, color: Colors.white, size: 14),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      childCount: _posts.length,
+                    ),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 0.75),
+                  ))
+          else if (_selectedTab == 1)
+            _buildPublicShopGrid(isDark, textColor, subTextColor, cardColor, borderColor)
+          else
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Biographie',
+                        style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(_creator?['bio'] ?? 'Aucune biographie pour le moment.',
+                        style: TextStyle(color: isDark ? Colors.grey : Colors.black54, fontSize: 14, height: 1.5)),
+                    const SizedBox(height: 24),
+                    Text('Membre depuis',
+                        style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(
+                        _creator?['created_at'] != null
+                            ? DateTime.parse(_creator!['created_at']).toString().split(' ')[0]
+                            : 'Date inconnue',
+                        style: TextStyle(color: isDark ? Colors.grey : Colors.black54, fontSize: 14)),
                   ],
                 ),
+              ),
+            ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 20)),
+        ],
+      ),
     );
   }
 
-  // ✅ NOUVEAU : Grille d'affichage des produits pour les visiteurs
-  Widget _buildPublicShopGrid() {
+  Widget _buildPublicShopGrid(bool isDark, Color textColor, Color subTextColor, Color cardColor, Color borderColor) {
     if (_isLoadingShop) {
-      return const SliverToBoxAdapter(
-        child: Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))),
+      return SliverToBoxAdapter(
+        child: Center(child: Padding(padding: const EdgeInsets.all(32), child: CircularProgressIndicator(color: textColor))),
       );
     }
     if (_shopProducts.isEmpty) {
-      return const SliverToBoxAdapter(
-        child: Center(child: Padding(padding: EdgeInsets.all(32), child: Text('Aucun produit en vente pour le moment', style: TextStyle(color: Colors.grey)))),
+      return SliverToBoxAdapter(
+        child: Center(
+            child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Text('Aucun produit en vente pour le moment', style: TextStyle(color: subTextColor)))),
       );
     }
     return SliverGrid(
@@ -757,10 +876,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
           final title = product['title'] as String? ?? 'Sans titre';
           final price = (product['price'] as num?)?.toDouble() ?? 0;
           final mediaType = product['media_type'] as String? ?? 'file';
-          
+
           return GestureDetector(
             onTap: () {
-              // ✅ Ouvre maintenant le vrai écran de détail
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -771,15 +889,14 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                   ),
                 ),
               ).then((refresh) {
-                // Si l'utilisateur a acheté et revient, on rafraîchit la boutique
                 if (refresh == true) _loadCreatorShop();
               });
             },
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: cardColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF2A2A2A)),
+                border: Border.all(color: borderColor),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -789,12 +906,11 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                     child: ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                       child: Container(
-                        color: Colors.grey.shade900,
+                        color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
                         child: Center(
                           child: Icon(
-                            mediaType == 'video' ? Icons.video_library : 
                             mediaType == 'image' ? Icons.image : Icons.insert_drive_file,
-                            color: Colors.grey.shade600,
+                            color: subTextColor,
                             size: 40,
                           ),
                         ),
@@ -810,14 +926,14 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         children: [
                           Text(
                             title,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                            style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 12),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const Spacer(),
                           Text(
                             '${price.toStringAsFixed(0)} FCFA',
-                            style: const TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold, fontSize: 14),
+                            style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                         ],
                       ),
@@ -830,62 +946,81 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
         },
         childCount: _shopProducts.length,
       ),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 0.75),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 0.75),
     );
   }
 
-  Widget _buildStatItem(IconData icon, String value, String label) {
+  Widget _buildStatItem(IconData icon, String value, String label, Color accentColor, Color textColor, Color subTextColor) {
     return Column(
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: brandViolet, size: 18),
+            Icon(icon, color: accentColor, size: 18),
             const SizedBox(width: 6),
-            Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+            Text(value, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
           ],
         ),
         const SizedBox(height: 4),
-        Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+        Text(label, style: TextStyle(color: subTextColor, fontSize: 11)),
       ],
     );
   }
 
   Widget _buildMembershipCard(
-    String badge, String title, double price, List<String> features, 
-    {required bool isPro, required String? currentTier, required int daysRemaining}
-  ) {
+    String badge,
+    String title,
+    double price,
+    List<String> features, {
+    required bool isPro,
+    required String? currentTier,
+    required int daysRemaining,
+    required bool isDark,
+    required Color textColor,
+    required Color subTextColor,
+    required Color accentColor,
+  }) {
     bool isCurrentTier = currentTier == (isPro ? 'pro' : 'premium');
     bool isDowngradeBlocked = currentTier == 'pro' && !isPro;
 
     String buttonText = 'Rejoindre';
     bool isButtonEnabled = true;
-    Color buttonColor = isPro ? Colors.white : brandViolet;
-    Color textColor = isPro ? brandViolet : Colors.white;
+    Color buttonColor = isPro
+        ? (isDark ? Colors.white : Colors.black)
+        : (isDark ? Colors.white24 : Colors.black12);
+    Color buttonTextColor = isPro
+        ? (isDark ? Colors.black : Colors.white)
+        : (isDark ? Colors.white : Colors.black);
 
     if (isCurrentTier) {
       buttonText = 'Déjà abonné ($daysRemaining j.)';
       isButtonEnabled = false;
-      buttonColor = Colors.grey.shade800;
-      textColor = Colors.grey.shade400;
+      buttonColor = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+      buttonTextColor = isDark ? Colors.grey.shade400 : Colors.black45;
     } else if (isDowngradeBlocked) {
       buttonText = 'Disponible après période Pro';
       isButtonEnabled = false;
-      buttonColor = Colors.grey.shade800;
-      textColor = Colors.grey.shade400;
+      buttonColor = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+      buttonTextColor = isDark ? Colors.grey.shade400 : Colors.black45;
     } else if (currentTier != null && !isPro) {
       buttonText = 'Passer à Pro';
     }
+
+    final cardBg = isPro
+        ? (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB))
+        : (isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF9FAFB));
 
     return Container(
       width: 240,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: isPro 
-            ? const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)], begin: Alignment.topLeft, end: Alignment.bottomRight)
-            : const LinearGradient(colors: [Color(0xFF1A1A1A), Color(0xFF1A1A1A)]),
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isPro ? const Color(0xFF8B5CF6) : Colors.grey.shade800, width: 2),
+        border: Border.all(
+          color: isPro ? accentColor : (isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+          width: 2,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -893,21 +1028,30 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: isPro ? Colors.white.withOpacity(0.2) : const Color(0xFF8B5CF6).withOpacity(0.2), 
-              borderRadius: BorderRadius.circular(8)
+              color: isPro
+                  ? accentColor.withOpacity(0.15)
+                  : (isDark ? Colors.white10 : Colors.black12),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Text(badge, style: TextStyle(color: isPro ? Colors.white : brandViolet, fontSize: 9, fontWeight: FontWeight.bold)),
+            child: Text(badge,
+                style: TextStyle(
+                    color: textColor,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 12),
-          Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(title, style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(price.toStringAsFixed(0), style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-              const Text(' FCFA', style: TextStyle(color: Colors.white70, fontSize: 11)),
-              const Text(' /mois', style: TextStyle(color: Colors.grey, fontSize: 11)),
+              Text(price.toStringAsFixed(0),
+                  style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold)),
+              Text(' FCFA',
+                  style: TextStyle(color: subTextColor, fontSize: 11)),
+              Text(' /mois',
+                  style: TextStyle(color: subTextColor, fontSize: 11)),
             ],
           ),
           const SizedBox(height: 12),
@@ -915,29 +1059,35 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
                   children: [
-                    Icon(Icons.check_circle, color: isPro ? Colors.white : brandViolet, size: 14),
+                    Icon(Icons.check_circle, color: accentColor, size: 14),
                     const SizedBox(width: 6),
-                    Expanded(child: Text(feature, style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                    Expanded(
+                        child: Text(feature,
+                            style: TextStyle(
+                                color: isDark ? Colors.white70 : Colors.black54,
+                                fontSize: 11))),
                   ],
                 ),
               )),
           const Spacer(),
           GestureDetector(
-            onTap: isButtonEnabled ? () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SubscriptionPaymentScreen(
-                    creatorId: widget.creatorId,
-                    creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
-                    tierType: isPro ? 'pro' : 'premium',
-                    price: price,
-                  ),
-                ),
-              ).then((success) {
-                if (success == true) _loadCreatorData();
-              });
-            } : null,
+            onTap: isButtonEnabled
+                ? () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SubscriptionPaymentScreen(
+                          creatorId: widget.creatorId,
+                          creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
+                          tierType: isPro ? 'pro' : 'premium',
+                          price: price,
+                        ),
+                      ),
+                    ).then((success) {
+                      if (success == true) _loadCreatorData();
+                    });
+                  }
+                : null,
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -948,7 +1098,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
               child: Text(
                 buttonText,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 11),
+                style: TextStyle(color: buttonTextColor, fontWeight: FontWeight.bold, fontSize: 11),
               ),
             ),
           ),
@@ -957,15 +1107,19 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-  Widget _buildTab(String label, int index) {
+  Widget _buildTab(String label, int index, Color textColor, Color subTextColor, Color accentColor) {
     final isSelected = _selectedTab == index;
     return GestureDetector(
       onTap: () => setState(() => _selectedTab = index),
       child: Column(
         children: [
-          Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+          Text(label,
+              style: TextStyle(
+                  color: isSelected ? textColor : subTextColor,
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
           const SizedBox(height: 8),
-          Container(height: 2, width: 40, color: isSelected ? brandViolet : Colors.transparent),
+          Container(height: 2, width: 40, color: isSelected ? accentColor : Colors.transparent),
         ],
       ),
     );

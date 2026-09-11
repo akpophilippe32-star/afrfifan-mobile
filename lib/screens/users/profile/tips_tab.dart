@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../services/dashboard_service.dart';
-// ✅ 1. IMPORT DE L'ÉCRAN DE PROFIL (Vérifie que le chemin correspond à ton dossier)
-import '../creator/creator_profile_screen.dart'; 
+import '../../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
+import '../creator/creator_profile_screen.dart';
 
-/// Onglet 6 : Pourboires (Tips)
-/// Affiche la liste des pourboires reçus en temps réel
 class TipsTab extends StatefulWidget {
   const TipsTab({super.key});
 
@@ -57,8 +55,26 @@ class _TipsTabState extends State<TipsTab> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey.shade500 : Colors.black54;
+    final verySubText = isDark ? Colors.grey.shade600 : Colors.black45;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+      return Center(child: CircularProgressIndicator(color: accentColor));
     }
 
     if (_tips.isEmpty) {
@@ -66,11 +82,18 @@ class _TipsTabState extends State<TipsTab> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.local_cafe_outlined, color: Colors.grey.shade600, size: 80),
+            Icon(Icons.local_cafe_outlined,
+                color: isDark ? Colors.grey.shade600 : Colors.grey.shade400, size: 80),
             const SizedBox(height: 16),
-            const Text('Aucun pourboire reçu pour le moment', style: TextStyle(color: Colors.grey, fontSize: 16)),
+            Text(
+              'Aucun pourboire reçu pour le moment',
+              style: TextStyle(color: subTextColor, fontSize: 16),
+            ),
             const SizedBox(height: 8),
-            Text('Partagez votre profil pour en recevoir !', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+            Text(
+              'Partagez votre profil pour en recevoir !',
+              style: TextStyle(color: verySubText, fontSize: 14),
+            ),
           ],
         ),
       );
@@ -78,21 +101,21 @@ class _TipsTabState extends State<TipsTab> {
 
     return RefreshIndicator(
       onRefresh: _loadTips,
-      color: const Color(0xFF8B5CF6),
+      color: accentColor,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20),
         itemCount: _tips.length,
         itemBuilder: (context, index) {
           final tip = _tips[index];
-          final amount = (tip['amount'] is num) ? (tip['amount'] as num).toDouble() : double.tryParse(tip['amount']?.toString() ?? '0') ?? 0.0;
-          
-          // ✅ 2. RÉCUPÉRATION DE L'ID DU FAN
+          final amount = (tip['amount'] is num)
+              ? (tip['amount'] as num).toDouble()
+              : double.tryParse(tip['amount']?.toString() ?? '0') ?? 0.0;
+
           final fanId = tip['fan_id']?.toString();
-          
-          // Récupérer les infos du fan (avec sécurité null)
+
           final profileData = tip['profiles'];
-          final fanName = profileData != null 
+          final fanName = profileData != null
               ? (profileData['full_name'] ?? profileData['username'] ?? 'Un fan anonyme')
               : 'Un fan anonyme';
           final fanAvatar = profileData?['avatar_url']?.toString();
@@ -104,14 +127,14 @@ class _TipsTabState extends State<TipsTab> {
             margin: const EdgeInsets.only(bottom: 16),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
+              color: cardColor,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF2A2A2A)),
+              border: Border.all(color: borderColor),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ✅ 3. GESTURE DETECTOR POUR RENDRE L'AVATAR ET LE NOM CLIQUABLES
+                // ─── FAN CLIQUABLE ───
                 GestureDetector(
                   onTap: () {
                     if (fanId != null) {
@@ -125,48 +148,61 @@ class _TipsTabState extends State<TipsTab> {
                   },
                   child: Row(
                     children: [
-                      // Avatar du fan (avec un petit effet visuel au survol/clic implicite)
+                      // ─── AVATAR ───
                       Stack(
                         children: [
                           CircleAvatar(
                             radius: 24,
-                            backgroundColor: const Color(0xFF8B5CF6).withOpacity(0.2),
+                            // ✅ Fond accent très léger
+                            backgroundColor: accentColor.withOpacity(0.15),
                             backgroundImage: fanAvatar != null ? NetworkImage(fanAvatar) : null,
-                            child: fanAvatar == null ? const Icon(Icons.person, color: Color(0xFF8B5CF6)) : null,
+                            child: fanAvatar == null
+                                ? Icon(Icons.person, color: accentColor)
+                                : null,
                           ),
-                          // Petite icône pour indiquer que c'est cliquable
                           Positioned(
                             bottom: 0,
                             right: 0,
                             child: Container(
                               padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(color: Color(0xFF1A1A1A), shape: BoxShape.circle),
-                              child: const Icon(Icons.arrow_forward, color: Color(0xFF8B5CF6), size: 14),
+                              decoration: BoxDecoration(
+                                color: cardColor,
+                                shape: BoxShape.circle,
+                              ),
+                              // ✅ Icône accent adaptative
+                              child: Icon(Icons.arrow_forward, color: accentColor, size: 14),
                             ),
                           )
                         ],
                       ),
                       const SizedBox(width: 12),
+
+                      // ─── INFOS FAN ───
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               fanName,
-                              style: const TextStyle(
-                                color: Colors.white, 
-                                fontSize: 16, 
+                              style: TextStyle(
+                                color: textColor,
+                                fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.underline, // Souligné pour indiquer le lien
-                                decorationColor: Color(0xFF8B5CF6),
+                                decoration: TextDecoration.underline,
+                                // ✅ Soulignement accent
+                                decorationColor: accentColor,
                               ),
                             ),
                             const SizedBox(height: 4),
                             Row(
                               children: [
-                                Icon(Icons.payment, color: Colors.orangeAccent, size: 12),
+                                // 🟠 Orange conservé (paiement)
+                                const Icon(Icons.payment, color: Colors.orangeAccent, size: 12),
                                 const SizedBox(width: 4),
-                                Text(paymentMethod, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                                Text(
+                                  paymentMethod,
+                                  style: TextStyle(color: subTextColor, fontSize: 12),
+                                ),
                               ],
                             ),
                           ],
@@ -175,36 +211,47 @@ class _TipsTabState extends State<TipsTab> {
                     ],
                   ),
                 ),
-                
-                // Montant (séparé du clic pour rester propre)
+
+                // ─── MONTANT ───
                 Align(
                   alignment: Alignment.centerRight,
                   child: Text(
                     '+ ${_formatMoney(amount)}',
-                    style: const TextStyle(color: Colors.greenAccent, fontSize: 18, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      // 🟢 Vert conservé (argent/gain)
+                      color: Colors.greenAccent,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 12),
 
-                // Message du fan (si présent)
+                // ─── MESSAGE ───
                 if (message != null && message.isNotEmpty) ...[
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                      // ✅ Fond accent très léger
+                      color: accentColor.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.format_quote, color: Color(0xFF8B5CF6), size: 18),
+                        // ✅ Icône accent
+                        Icon(Icons.format_quote, color: accentColor, size: 18),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             message,
-                            style: const TextStyle(color: Colors.white70, fontSize: 14, fontStyle: FontStyle.italic),
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.black54,
+                              fontSize: 14,
+                              fontStyle: FontStyle.italic,
+                            ),
                           ),
                         ),
                       ],
@@ -212,14 +259,17 @@ class _TipsTabState extends State<TipsTab> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                
-                // Date
+
+                // ─── DATE ───
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Icon(Icons.access_time, color: Colors.grey.shade600, size: 12),
+                    Icon(Icons.access_time, color: verySubText, size: 12),
                     const SizedBox(width: 4),
-                    Text(_formatDate(tip['created_at']?.toString()), style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                    Text(
+                      _formatDate(tip['created_at']?.toString()),
+                      style: TextStyle(color: verySubText, fontSize: 12),
+                    ),
                   ],
                 ),
               ],

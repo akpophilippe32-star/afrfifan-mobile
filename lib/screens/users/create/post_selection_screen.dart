@@ -5,14 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 import '../../../services/content_service.dart';
 import '../create/models/draft_post.dart';
-import '../../../services/video_compression_service.dart'; // ✅ AJOUTÉ
+import '../../../services/video_compression_service.dart';
 
 class PostSelectionScreen extends StatefulWidget {
   final String mediaPath;
   final String mediaType;
-  final XFile? xFile; 
+  final XFile? xFile;
   final Map<String, String>? selectedSound;
 
   const PostSelectionScreen({
@@ -49,9 +50,9 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
         } else {
           _videoController = VideoPlayerController.file(File(widget.mediaPath));
         }
-        
+
         await _videoController!.initialize();
-        
+
         if (mounted) {
           setState(() {});
           _videoController?.play();
@@ -76,7 +77,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     super.dispose();
   }
 
-  // ✅ VERSION AVEC COMPRESSION VIDÉO POUR LES STORIES
+  // ✅ PUBLIER EN STORY
   Future<void> _publishToStory() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -96,10 +97,8 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
 
     try {
       XFile fileToUpload = widget.xFile!;
-      
-      // ✅ COMPRESSION SI C'EST UNE VIDÉO
+
       if (widget.mediaType == 'video') {
-        // ✅ CORRECTION : Utiliser VideoCompressionService() au lieu de videoCompressionService
         final compressedFile = await VideoCompressionService().compressVideo(fileToUpload.path);
         if (compressedFile != null) {
           fileToUpload = XFile(compressedFile.path);
@@ -116,8 +115,8 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       );
 
       if (storyId != null && mounted) {
-        Navigator.pop(context); 
-        Navigator.pop(context); 
+        Navigator.pop(context);
+        Navigator.pop(context);
         _showSuccess('✅ Story publiée avec succès !');
       } else {
         _showError('Erreur lors de la publication');
@@ -133,7 +132,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     }
   }
 
-  // ✅ VERSION AVEC COMPRESSION VIDÉO POUR LE FEED
+  // ✅ PUBLIER SUR LE FEED
   Future<void> _publishToFeed({String? title, String? caption}) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -155,7 +154,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       final draft = DraftPost();
       draft.postType = widget.mediaType;
       draft.caption = caption ?? '';
-      
+
       if (widget.selectedSound != null) {
         draft.musicUrl = widget.selectedSound!['url'];
       }
@@ -163,29 +162,25 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
         draft.caption = '$title\n\n${draft.caption}';
       }
 
-      // ✅ 1. COMPRESSION (Uniquement pour les vidéos)
       XFile fileToUpload = widget.xFile!;
       if (widget.mediaType == 'video') {
         debugPrint('🎬 Début de la compression vidéo...');
-        // ✅ CORRECTION : Utiliser VideoCompressionService() au lieu de videoCompressionService
         final compressedFile = await VideoCompressionService().compressVideo(
           fileToUpload.path,
         );
-        
+
         if (compressedFile == null) {
           setState(() { _isPublishing = false; _isCompressing = false; });
           _showError('Échec de la compression vidéo. Réessayez.');
           return;
         }
-        
+
         fileToUpload = XFile(compressedFile.path);
         debugPrint('✅ Vidéo compressée avec succès !');
       }
 
-      // ✅ 2. PRÉPARATION DU DRAFT AVEC LE FICHIER
-      draft.mediaFiles = [fileToUpload]; 
+      draft.mediaFiles = [fileToUpload];
 
-      // ✅ 3. UPLOAD VERS SUPABASE
       final postId = await contentService.publishPost(draft);
 
       if (postId != null && mounted) {
@@ -206,9 +201,17 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     }
   }
 
-  void _showFeedOptions() {
+  void _showFeedOptions(bool isDark) {
     final titleController = TextEditingController();
     final captionController = TextEditingController();
+
+    final sheetBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey.shade500 : Colors.black54;
+    final fieldBg = isDark ? Colors.grey.shade900 : const Color(0xFFF3F4F6);
+    final handleColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
 
     showModalBottomSheet(
       context: context,
@@ -216,29 +219,47 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: sheetBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(2)))),
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: handleColor, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
             const SizedBox(height: 24),
-            const Text('Détails de la publication', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+            Text('Détails de la publication',
+                style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             TextField(
               controller: titleController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(hintText: 'Titre', hintStyle: TextStyle(color: Colors.grey.shade500), filled: true, fillColor: Colors.grey.shade900, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
+                hintText: 'Titre',
+                hintStyle: TextStyle(color: subTextColor),
+                filled: true,
+                fillColor: fieldBg,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: captionController,
               maxLines: 3,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(hintText: 'Légende (optionnel)', hintStyle: TextStyle(color: Colors.grey.shade500), filled: true, fillColor: Colors.grey.shade900, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
+                hintText: 'Légende (optionnel)',
+                hintStyle: TextStyle(color: subTextColor),
+                filled: true,
+                fillColor: fieldBg,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -249,8 +270,20 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
                   Navigator.pop(context);
                   _publishToFeed(title: titleController.text, caption: captionController.text);
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                child: const Text('Publier sur le Feed', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                style: ElevatedButton.styleFrom(
+                  // ✅ Bouton publier noir/blanc
+                  backgroundColor: accentColor,
+                  foregroundColor: accentTextColor,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                  'Publier sur le Feed',
+                  style: TextStyle(
+                    color: accentTextColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 20),
@@ -262,37 +295,69 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
 
   void _showSuccess(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.green.shade700, behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.red.shade700, behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final previewBg = isDark ? Colors.grey.shade900 : Colors.grey.shade200;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       body: SafeArea(
         child: (_isPublishing || _isCompressing)
             ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const CircularProgressIndicator(color: Color(0xFF8B5CF6)),
+                    // ✅ Loader noir/blanc
+                    CircularProgressIndicator(color: accentColor),
                     const SizedBox(height: 16),
                     Text(
-                      _isCompressing 
-                          ? '🎬 Compression de la vidéo en cours...' 
+                      _isCompressing
+                          ? '🎬 Compression de la vidéo en cours...'
                           : '🚀 Publication en cours...',
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      style: TextStyle(color: textColor, fontSize: 16),
                     ),
                     if (_isCompressing) ...[
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Cela peut prendre quelques secondes',
-                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                        style: TextStyle(color: subTextColor, fontSize: 12),
                       ),
                     ]
                   ],
@@ -300,19 +365,25 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
               )
             : Column(
                 children: [
+                  // ─── APERÇU MÉDIA ───
                   Expanded(
                     flex: 3,
                     child: Container(
                       width: double.infinity,
-                      decoration: BoxDecoration(color: Colors.grey.shade900, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32))),
+                      decoration: BoxDecoration(
+                        color: previewBg,
+                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
+                      ),
                       child: ClipRRect(
                         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
                         child: _isLoading
-                            ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
-                            : _buildMediaPreview(),
+                            ? Center(child: CircularProgressIndicator(color: accentColor))
+                            : _buildMediaPreview(isDark),
                       ),
                     ),
                   ),
+
+                  // ─── OPTIONS DE PUBLICATION ───
                   Expanded(
                     flex: 2,
                     child: Padding(
@@ -324,22 +395,23 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF8B5CF6).withOpacity(0.2),
+                                // ✅ Fond accent très léger
+                                color: accentColor.withOpacity(0.12),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.music_note, color: Color(0xFF8B5CF6)),
+                                  Icon(Icons.music_note, color: accentColor),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       widget.selectedSound!['title']!,
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                      style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                   Text(
                                     widget.selectedSound!['artist']!,
-                                    style: TextStyle(color: Colors.grey.shade400),
+                                    style: TextStyle(color: subTextColor),
                                   ),
                                 ],
                               ),
@@ -347,11 +419,33 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
                             const SizedBox(height: 16),
                           ],
 
-                          const Text('Où voulez-vous publier ?', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                          Text(
+                            'Où voulez-vous publier ?',
+                            style: TextStyle(color: textColor, fontSize: 22, fontWeight: FontWeight.bold),
+                          ),
                           const SizedBox(height: 20),
-                          _buildSelectionCard(icon: Icons.flash_on, title: 'Ma Story', subtitle: 'Disparaît après 24h', color: const Color(0xFF8B5CF6), onTap: _publishToStory),
+
+                          _buildSelectionCard(
+                            icon: Icons.flash_on,
+                            title: 'Ma Story',
+                            subtitle: 'Disparaît après 24h',
+                            accentColor: accentColor,
+                            accentTextColor: accentTextColor,
+                            textColor: textColor,
+                            subTextColor: subTextColor,
+                            onTap: _publishToStory,
+                          ),
                           const SizedBox(height: 12),
-                          _buildSelectionCard(icon: Icons.grid_view, title: 'Mon Feed', subtitle: 'Reste sur votre profil', color: const Color(0xFFEC4899), onTap: _showFeedOptions),
+                          _buildSelectionCard(
+                            icon: Icons.grid_view,
+                            title: 'Mon Feed',
+                            subtitle: 'Reste sur votre profil',
+                            accentColor: accentColor,
+                            accentTextColor: accentTextColor,
+                            textColor: textColor,
+                            subTextColor: subTextColor,
+                            onTap: () => _showFeedOptions(isDark),
+                          ),
                         ],
                       ),
                     ),
@@ -362,10 +456,15 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     );
   }
 
-  Widget _buildMediaPreview() {
+  Widget _buildMediaPreview(bool isDark) {
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     if (widget.mediaType == 'video') {
       if (_videoController != null && _videoController!.value.isInitialized) {
-        return AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: VideoPlayer(_videoController!));
+        return AspectRatio(
+          aspectRatio: _videoController!.value.aspectRatio,
+          child: VideoPlayer(_videoController!),
+        );
       }
     } else if (widget.xFile != null && _imageBytes != null) {
       return Image.memory(_imageBytes!, fit: BoxFit.cover, width: double.infinity, height: double.infinity);
@@ -377,37 +476,59 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
         height: double.infinity,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
-          return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+          return Center(child: CircularProgressIndicator(color: accentColor));
         },
         errorBuilder: (context, error, stackTrace) {
-          return const Center(child: Icon(Icons.error, color: Colors.white54));
+          return Center(child: Icon(Icons.error, color: isDark ? Colors.white54 : Colors.black38));
         },
       );
     }
-    return const Center(child: Icon(Icons.error, color: Colors.white54));
+    return Center(child: Icon(Icons.error, color: isDark ? Colors.white54 : Colors.black38));
   }
 
-  Widget _buildSelectionCard({required IconData icon, required String title, required String subtitle, required Color color, required VoidCallback onTap}) {
+  Widget _buildSelectionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color accentColor,
+    required Color accentTextColor,
+    required Color textColor,
+    required Color subTextColor,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withOpacity(0.5), width: 1.5)),
+        decoration: BoxDecoration(
+          // ✅ Carte avec accent noir/blanc léger
+          color: accentColor.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accentColor.withOpacity(0.3), width: 1.5),
+        ),
         child: Row(
           children: [
-            Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: Colors.white, size: 24)),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                // ✅ Icône dans un rond accent
+                color: accentColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: accentTextColor, size: 24),
+            ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text(title, style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text(subtitle, style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+                  Text(subtitle, style: TextStyle(color: subTextColor, fontSize: 13)),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 18),
+            Icon(Icons.arrow_forward_ios, color: subTextColor, size: 18),
           ],
         ),
       ),

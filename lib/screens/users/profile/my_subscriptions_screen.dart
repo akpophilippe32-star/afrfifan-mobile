@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../models/user_subscription.dart';
-
-// ✅ IMPORT DE L'ÉCRAN D'EXPLORATION (qui n'attend pas de paramètre creatorId)
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 import '../explore/trending_creators_screen.dart';
 
 class MySubscriptionsScreen extends StatefulWidget {
@@ -17,18 +16,6 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
   List<UserSubscription> _subscriptions = [];
   bool _isLoading = true;
 
-  // Couleurs identiques à Next.js
-  final Color bg = const Color(0xFF0A0A0A);
-  final Color card = const Color(0xFF1A1A1A);
-  final Color border = const Color(0xFF2A2A2A);
-  final Color primary = const Color(0xFF8B5CF6);
-  final Color text = const Color(0xFFFFFFFF);
-  final Color textMuted = const Color(0xFF9CA3AF);
-  final Color green = const Color(0xFF10B981);
-  final Color orange = const Color(0xFFF97316);
-  final Color red = const Color(0xFFEF4444);
-  final Color gold = const Color(0xFFF59E0B);
-
   @override
   void initState() {
     super.initState();
@@ -41,7 +28,6 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
       final user = supabase.auth.currentUser;
       if (user == null) return;
 
-      // 1. Récupérer les abonnements où L'UTILISATEUR EST LE FAN (celui qui paie)
       final subsResponse = await supabase
           .from('subscriptions')
           .select('*')
@@ -56,7 +42,6 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
         return;
       }
 
-      // 2. Récupérer les profils des créateurs
       final creatorIds = (subsResponse as List).map((s) => s['creator_id'] as String).toSet().toList();
       final profilesResponse = await supabase
           .from('profiles')
@@ -67,20 +52,18 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
         for (var p in profilesResponse) p['id'] as String: p
       };
 
-      // 3. Regrouper par créateur
       final groupedSubs = <String, List<Map<String, dynamic>>>{};
       for (var sub in subsResponse) {
         final creatorId = sub['creator_id'] as String;
         groupedSubs.putIfAbsent(creatorId, () => []).add(sub);
       }
 
-      // 4. Traiter les données pour l'affichage
       final now = DateTime.now();
       final List<UserSubscription> finalSubs = [];
 
       groupedSubs.forEach((creatorId, subs) {
         final profile = profilesMap[creatorId] ?? {};
-        
+
         final activeSub = subs.firstWhere(
           (s) => s['status'] == 'active',
           orElse: () => subs.first,
@@ -116,14 +99,12 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
         ));
       });
 
-      // Trier : actifs d'abord, puis par date de fin
       finalSubs.sort((a, b) {
         if (a.displayStatus == 'active' && b.displayStatus != 'active') return -1;
         if (a.displayStatus != 'active' && b.displayStatus == 'active') return 1;
         return b.endDate.compareTo(a.endDate);
       });
 
-      // ✅ FILTRE DE SÉCURITÉ : On retire l'utilisateur actuel de la liste
       final filteredSubs = finalSubs.where((sub) => sub.creatorId != user.id).toList();
 
       setState(() {
@@ -136,12 +117,14 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
     }
   }
 
-  Color _getTierColor(String tier) {
+  // ✅ Tier colors : neutres pour ne pas dépendre du thème
+  Color _getTierColor(String tier, bool isDark) {
+    final accent = isDark ? Colors.white : Colors.black;
     switch (tier) {
-      case 'pro': return gold;
-      case 'premium': return primary;
-      case 'basic': return green;
-      default: return textMuted;
+      case 'pro': return accent;
+      case 'premium': return accent;
+      case 'basic': return accent.withOpacity(0.6);
+      default: return accent.withOpacity(0.4);
     }
   }
 
@@ -161,34 +144,55 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: bg,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Mes Abonnements', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          'Mes Abonnements',
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+        ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
+          ? Center(child: CircularProgressIndicator(color: accentColor))
           : _subscriptions.isEmpty
-              ? _buildEmptyState()
+              ? _buildEmptyState(isDark)
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: _subscriptions.length,
                   itemBuilder: (context, index) {
                     final sub = _subscriptions[index];
-                    return _buildSubscriptionCard(sub);
+                    return _buildSubscriptionCard(sub, isDark);
                   },
                 ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? const Color(0xFF9CA3AF) : Colors.black54;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -197,28 +201,36 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
           children: [
             const Text('⭐', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 16),
-            const Text('Aucun abonnement actif', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(
+              'Aucun abonnement actif',
+              style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
-            Text('Abonnez-vous à des créateurs pour accéder à leur contenu exclusif.', 
-                textAlign: TextAlign.center, style: TextStyle(color: textMuted, fontSize: 14)),
+            Text(
+              'Abonnez-vous à des créateurs pour accéder à leur contenu exclusif.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: subTextColor, fontSize: 14),
+            ),
             const SizedBox(height: 24),
-            
-            // ✅ BOUTON MODIFIÉ : Redirige vers l'écran d'exploration SANS paramètre
+
+            // ✅ Bouton neutre
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const TrendingCreatorsScreen(), // <-- Pas de creatorId ici
-                  ),
+                  MaterialPageRoute(builder: (context) => const TrendingCreatorsScreen()),
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: primary,
+                backgroundColor: accentColor,
+                foregroundColor: accentTextColor,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
-              child: const Text('Découvrir des créateurs', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Découvrir des créateurs',
+                style: TextStyle(color: accentTextColor, fontWeight: FontWeight.bold),
+              ),
             )
           ],
         ),
@@ -226,9 +238,21 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
     );
   }
 
-  Widget _buildSubscriptionCard(UserSubscription sub) {
-    final tierColor = _getTierColor(sub.highestTier);
-    
+  Widget _buildSubscriptionCard(UserSubscription sub, bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? const Color(0xFF9CA3AF) : Colors.black54;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
+    final tierColor = _getTierColor(sub.highestTier, isDark);
+
+    // ⚠️ Couleurs de statut (vert/orange/rouge) conservées car sémantiques
+    final green = const Color(0xFF10B981);
+    final orange = const Color(0xFFF97316);
+    final red = const Color(0xFFEF4444);
+
     String statusLabel;
     Color statusColor;
     Color statusBgColor;
@@ -250,22 +274,19 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: card,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Partie cliquable
+          // ─── PARTIE CLIQUABLE ───
           InkWell(
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  // ✅ CORRECTION : On retire creatorId car TrendingCreatorsScreen ne l'attend pas
-                  builder: (context) => const TrendingCreatorsScreen(), 
-                ),
+                MaterialPageRoute(builder: (context) => const TrendingCreatorsScreen()),
               );
             },
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -273,22 +294,26 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  // Avatar
+                  // ─── AVATAR ───
                   Container(
                     width: 64,
                     height: 64,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: tierColor, width: 3),
+                      // ✅ Bordure accent (noire en clair / blanche en sombre)
+                      border: Border.all(color: accentColor, width: 3),
                       image: sub.avatarUrl != null
                           ? DecorationImage(image: NetworkImage(sub.avatarUrl!), fit: BoxFit.cover)
                           : null,
-                      color: border,
+                      color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB),
                     ),
-                    child: sub.avatarUrl == null ? const Icon(Icons.person, size: 32, color: Colors.white) : null,
+                    child: sub.avatarUrl == null
+                        ? Icon(Icons.person, size: 32, color: textColor)
+                        : null,
                   ),
                   const SizedBox(width: 16),
-                  // Infos
+
+                  // ─── INFOS ───
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,17 +323,18 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
                             Flexible(
                               child: Text(
                                 sub.fullName ?? sub.username,
-                                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                                style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            if (sub.isVerified) const Padding(
-                              padding: EdgeInsets.only(left: 4),
-                              child: Icon(Icons.verified, color: Color(0xFF10B981), size: 18),
-                            ),
+                            if (sub.isVerified)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 4),
+                                child: Icon(Icons.verified, color: Color(0xFF10B981), size: 18),
+                              ),
                           ],
                         ),
-                        Text('@${sub.username}', style: TextStyle(color: textMuted, fontSize: 13)),
+                        Text('@${sub.username}', style: TextStyle(color: subTextColor, fontSize: 13)),
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -324,52 +350,54 @@ class _MySubscriptionsScreenState extends State<MySubscriptionsScreen> {
                       ],
                     ),
                   ),
-                  // Badge Tier
+
+                  // ─── BADGE TIER ───
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: tierColor.withOpacity(0.2),
-                      border: Border.all(color: tierColor),
+                      color: accentColor.withOpacity(0.15),
+                      border: Border.all(color: accentColor),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       _getTierLabel(sub.highestTier),
-                      style: TextStyle(color: tierColor, fontWeight: FontWeight.bold, fontSize: 14),
+                      style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, fontSize: 14),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          // Footer avec date et bouton
+
+          // ─── FOOTER (date + bouton) ───
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.2),
-              border: Border(top: BorderSide(color: border)),
+              // ✅ Fond légèrement différent du card
+              color: isDark ? Colors.black.withOpacity(0.2) : Colors.black.withOpacity(0.03),
+              border: Border(top: BorderSide(color: borderColor)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   sub.isExpired ? 'Expiré le ${_formatDate(sub.endDate)}' : 'Expire le ${_formatDate(sub.endDate)}',
-                  style: TextStyle(color: sub.isExpired ? red : textMuted, fontSize: 13),
+                  style: TextStyle(color: sub.isExpired ? red : subTextColor, fontSize: 13),
                 ),
                 if (sub.isExpired || sub.displayStatus == 'expiring_soon')
                   ElevatedButton(
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          // ✅ CORRECTION : On retire creatorId ici aussi
-                          builder: (context) => const TrendingCreatorsScreen(),
-                        ),
+                        MaterialPageRoute(builder: (context) => const TrendingCreatorsScreen()),
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: sub.isExpired ? primary : Colors.transparent,
-                      foregroundColor: sub.isExpired ? Colors.white : orange,
-                      side: sub.isExpired ? null : BorderSide(color: orange),
+                      // ✅ Bouton : noir en clair / blanc en sombre (si expiré)
+                      // ✅ Sinon : transparent avec bordure orange (Prolonger)
+                      backgroundColor: sub.isExpired ? accentColor : Colors.transparent,
+                      foregroundColor: sub.isExpired ? accentTextColor : orange,
+                      side: sub.isExpired ? null : const BorderSide(color: Color(0xFFF97316)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                     ),

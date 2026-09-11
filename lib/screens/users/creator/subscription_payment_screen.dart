@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 
 class SubscriptionPaymentScreen extends StatefulWidget {
   final String creatorId;
   final String creatorName;
   final String tierType; // 'premium', 'pro', ou 'product'
   final double price;
-  final String? productId; // ✅ NOUVEAU : ID du produit (si mode produit)
+  final String? productId;
 
   const SubscriptionPaymentScreen({
     Key? key,
@@ -14,7 +15,7 @@ class SubscriptionPaymentScreen extends StatefulWidget {
     required this.creatorName,
     required this.tierType,
     required this.price,
-    this.productId, // ✅ Optionnel
+    this.productId,
   }) : super(key: key);
 
   @override
@@ -23,11 +24,12 @@ class SubscriptionPaymentScreen extends StatefulWidget {
 
 class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
   final supabase = Supabase.instance.client;
-  
+
   String? _selectedPaymentMethod;
   String? _phoneNumber;
   bool _isLoading = false;
 
+  // ✅ Couleurs des opérateurs conservées (identité visuelle de marque)
   final List<Map<String, dynamic>> _paymentMethods = [
     {'id': 'mtn_momo', 'name': 'MTN Mobile Money', 'color': Color(0xFFFFCC00), 'icon': Icons.phone_android},
     {'id': 'orange_money', 'name': 'Orange Money', 'color': Color(0xFFFF6600), 'icon': Icons.phone_android},
@@ -39,21 +41,38 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
     final bool isPro = widget.tierType == 'pro';
-    final Color brandViolet = const Color(0xFF8B5CF6);
+
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white70 : Colors.black54;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           _isProductMode ? 'Finaliser l\'achat' : 'Finaliser l\'abonnement',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
         ),
       ),
       body: SingleChildScrollView(
@@ -66,11 +85,21 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
+                // ✅ Plus de gradient violet → noir en clair / gris foncé en sombre
                 gradient: isPro
-                    ? const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)], begin: Alignment.topLeft, end: Alignment.bottomRight)
-                    : const LinearGradient(colors: [Color(0xFF1A1A1A), Color(0xFF1A1A1A)]),
+                    ? LinearGradient(
+                        colors: isDark
+                            ? [const Color(0xFF2A2A2A), const Color(0xFF1A1A1A)]
+                            : [const Color(0xFFE5E7EB), const Color(0xFFF3F4F6)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : LinearGradient(colors: [cardColor, cardColor]),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: isPro ? const Color(0xFF8B5CF6) : Colors.grey.shade800, width: 2),
+                border: Border.all(
+                  color: isPro ? accentColor : borderColor,
+                  width: 2,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -78,17 +107,17 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
                   Text(
                     _isProductMode ? 'PRODUIT' : widget.tierType.toUpperCase(),
                     style: TextStyle(
-                      color: isPro ? Colors.white : brandViolet,
+                      color: isPro ? textColor : subTextColor,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _isProductMode 
+                    _isProductMode
                         ? 'Achat auprès de ${widget.creatorName}'
                         : 'Abonnement à ${widget.creatorName}',
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -97,16 +126,16 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
                     children: [
                       Text(
                         '${widget.price.toStringAsFixed(0)}',
-                        style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: textColor, fontSize: 32, fontWeight: FontWeight.bold),
                       ),
-                      const Text(
+                      Text(
                         ' FCFA',
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                        style: TextStyle(color: subTextColor, fontSize: 14),
                       ),
                       if (!_isProductMode)
-                        const Text(
+                        Text(
                           ' /mois',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                          style: TextStyle(color: subTextColor, fontSize: 12),
                         ),
                     ],
                   ),
@@ -116,9 +145,9 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
             const SizedBox(height: 30),
 
             // 💳 MÉTHODE DE PAIEMENT
-            const Text(
+            Text(
               'Méthode de paiement',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             ..._paymentMethods.map((method) => Padding(
@@ -128,14 +157,15 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: _selectedPaymentMethod == method['id'] 
-                        ? const Color(0xFF8B5CF6).withOpacity(0.2) 
-                        : const Color(0xFF1A1A1A),
+                    // ✅ Sélection : fond accent très léger
+                    color: _selectedPaymentMethod == method['id']
+                        ? accentColor.withOpacity(0.12)
+                        : cardColor,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: _selectedPaymentMethod == method['id'] 
-                          ? const Color(0xFF8B5CF6) 
-                          : const Color(0xFF2A2A2A),
+                      color: _selectedPaymentMethod == method['id']
+                          ? accentColor
+                          : borderColor,
                       width: 2,
                     ),
                   ),
@@ -144,6 +174,7 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
+                          // ✅ Couleur de marque de l'opérateur (identité visuelle)
                           color: method['color'],
                           shape: BoxShape.circle,
                         ),
@@ -153,11 +184,11 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
                       Expanded(
                         child: Text(
                           method['name'],
-                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                          style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w600),
                         ),
                       ),
                       if (_selectedPaymentMethod == method['id'])
-                        const Icon(Icons.check_circle, color: Color(0xFF8B5CF6), size: 24),
+                        Icon(Icons.check_circle, color: accentColor, size: 24),
                     ],
                   ),
                 ),
@@ -166,27 +197,27 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
             const SizedBox(height: 30),
 
             // 📱 NUMÉRO DE TÉLÉPHONE
-            const Text(
+            Text(
               'Numéro Mobile Money',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: cardColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF2A2A2A)),
+                border: Border.all(color: borderColor),
               ),
               child: TextField(
                 onChanged: (value) => _phoneNumber = value,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: textColor),
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'Ex: 97 XX XX XX',
-                  hintStyle: TextStyle(color: Color(0xFF555555)),
-                  prefixIcon: Icon(Icons.phone, color: Color(0xFF8B5CF6)),
+                  hintStyle: TextStyle(color: isDark ? const Color(0xFF555555) : Colors.black38),
+                  prefixIcon: Icon(Icons.phone, color: subTextColor),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 ),
               ),
             ),
@@ -197,19 +228,25 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: (_selectedPaymentMethod != null && _phoneNumber != null && !_isLoading) 
-                    ? _processPayment 
+                onPressed: (_selectedPaymentMethod != null && _phoneNumber != null && !_isLoading)
+                    ? _processPayment
                     : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8B5CF6),
-                  disabledBackgroundColor: Colors.grey[800],
+                  // ✅ Bouton actif : noir en clair / blanc en sombre
+                  backgroundColor: accentColor,
+                  foregroundColor: accentTextColor,
+                  disabledBackgroundColor: isDark ? Colors.grey[800] : Colors.grey.shade300,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text(
+                    ? CircularProgressIndicator(color: accentTextColor)
+                    : Text(
                         'Confirmer le paiement',
-                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: accentTextColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
             ),
@@ -226,11 +263,9 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
       final currentUser = supabase.auth.currentUser;
       if (currentUser == null) throw Exception("Utilisateur non connecté.");
 
-      // 1. Simuler un délai de traitement
       await Future.delayed(const Duration(seconds: 2));
 
       if (_isProductMode) {
-        // ✅ MODE PRODUIT : Insérer dans product_purchases
         await supabase.from('product_purchases').insert({
           'product_id': widget.productId,
           'buyer_id': currentUser.id,
@@ -242,7 +277,6 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
           'purchase_date': DateTime.now().toIso8601String(),
         });
       } else {
-        // ✅ MODE ABONNEMENT : Insérer dans subscriptions
         await supabase.from('subscriptions').insert({
           'fan_id': currentUser.id,
           'creator_id': widget.creatorId,
@@ -254,36 +288,40 @@ class _SubscriptionPaymentScreenState extends State<SubscriptionPaymentScreen> {
         });
       }
 
-      // 2. Afficher le succès
       if (mounted) {
+        final isDark = themeNotifier.value == ThemeMode.dark;
+        final dialogBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+        final textColor = isDark ? Colors.white : Colors.black87;
+        final accentColor = isDark ? Colors.white : Colors.black;
+
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
+            backgroundColor: dialogBg,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 32),
-                SizedBox(width: 12),
-                Text('Paiement réussi !', style: TextStyle(color: Colors.white)),
+                const Icon(Icons.check_circle, color: Colors.green, size: 32),
+                const SizedBox(width: 12),
+                Text('Paiement réussi !', style: TextStyle(color: textColor)),
               ],
             ),
             content: Text(
-              _isProductMode 
+              _isProductMode
                   ? 'Vous avez acheté ce produit. Vous pouvez maintenant y accéder !'
                   : 'Vous êtes maintenant abonné. Profitez du contenu exclusif !',
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
             ),
             actions: [
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  Navigator.of(context).pop(true); // ✅ Retourne true pour rafraîchir
+                  Navigator.of(context).pop(true);
                 },
-                child: const Text(
+                child: Text(
                   'Super !',
-                  style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold),
+                  style: TextStyle(color: accentColor, fontWeight: FontWeight.bold),
                 ),
               ),
             ],

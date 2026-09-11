@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// ✅ AJOUTE CET IMPORT (ajuste le chemin '../' si ton dossier profile_screen.dart est ailleurs)
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 import '../main/main_screen.dart';
 
 class ConfirmationScreen extends StatefulWidget {
@@ -93,16 +93,27 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ CORRECTION : On bloque le retour SEULEMENT pendant le chargement
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+
     return WillPopScope(
-      onWillPop: () async => _isLoading, 
+      onWillPop: () async => _isLoading,
       child: Scaffold(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: bgColor,
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(30),
             child: Center(
-              child: _buildCurrentState(),
+              child: _buildCurrentState(isDark),
             ),
           ),
         ),
@@ -110,22 +121,27 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     );
   }
 
-  Widget _buildCurrentState() {
+  Widget _buildCurrentState(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? const Color(0xFF888888) : Colors.black54;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     if (_isLoading) {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const CircularProgressIndicator(color: Color(0xFF8B5CF6), strokeWidth: 3),
+          CircularProgressIndicator(color: accentColor, strokeWidth: 3),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Envoi de votre demande...',
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Veuillez ne pas quitter l\'application.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xFF888888), fontSize: 14),
+            style: TextStyle(color: subTextColor, fontSize: 14),
           ),
         ],
       );
@@ -137,99 +153,125 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         children: [
           const Icon(Icons.error_outline, color: Colors.red, size: 80),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Une erreur est survenue',
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+            style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           Text(
             _errorMessage!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Color(0xFF888888), fontSize: 14),
+            style: TextStyle(color: subTextColor, fontSize: 14),
           ),
           const SizedBox(height: 32),
           SizedBox(
             width: double.infinity,
             height: 55,
             child: ElevatedButton(
-              onPressed: _submitApplication,
+              onPressed: () {
+                setState(() {
+                  _isLoading = true;
+                  _errorMessage = null;
+                });
+                _submitApplication();
+              },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF8B5CF6),
+                backgroundColor: accentColor,
+                foregroundColor: accentTextColor,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              child: const Text('Réessayer', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Réessayer',
+                style: TextStyle(
+                  color: accentTextColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
         ],
       );
     }
 
-    // ✅ ÉCRAN DE SUCCÈS
+    // ─── ÉCRAN DE SUCCÈS ───
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildSuccessIcon(),
+        _buildSuccessIcon(isDark),
         const SizedBox(height: 30),
-        const Text(
+        Text(
           'Votre demande a été envoyée\navec succès !',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+          style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'Notre équipe vérifie vos informations\nsous 24 à 48h.\nVous recevrez une notification.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Color(0xFF888888), fontSize: 14, height: 1.5),
+          style: TextStyle(color: subTextColor, fontSize: 14, height: 1.5),
         ),
         const SizedBox(height: 30),
-        _buildStatusCard(),
+        _buildStatusCard(isDark),
         const SizedBox(height: 40),
-        _buildActionButtons(context),
+        _buildActionButtons(context, isDark),
       ],
     );
   }
 
-  Widget _buildSuccessIcon() {
+  Widget _buildSuccessIcon(bool isDark) {
+    final circleBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final circleBorder = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+
     return Container(
       width: 100,
       height: 100,
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: circleBg,
         shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFF2A2A2A), width: 2),
+        border: Border.all(color: circleBorder, width: 2),
       ),
+      // 🟢 Vert conservé (succès)
       child: const Icon(Icons.check_circle, color: Colors.green, size: 60),
     );
   }
 
-  Widget _buildStatusCard() {
+  Widget _buildStatusCard(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final cardBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final cardBorder = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final progressBg = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: cardBorder),
       ),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.hourglass_empty, color: Color(0xFF8B5CF6), size: 24),
+              // ✅ Icône accent au lieu de violet
+              Icon(Icons.hourglass_empty, color: accentColor, size: 24),
               const SizedBox(width: 10),
-              const Text(
+              Text(
                 'En cours de vérification',
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ],
           ),
           const SizedBox(height: 16),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: const LinearProgressIndicator(
-              backgroundColor: Color(0xFF2A2A2A),
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)),
+            child: LinearProgressIndicator(
+              backgroundColor: progressBg,
+              // ✅ Accent au lieu de violet
+              valueColor: AlwaysStoppedAnimation<Color>(accentColor),
               minHeight: 6,
             ),
           ),
@@ -238,8 +280,10 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     );
   }
 
-  // ✅ MODIFICATION ICI : Bouton unique qui ramène au profil
-  Widget _buildActionButtons(BuildContext context) {
+  Widget _buildActionButtons(BuildContext context, bool isDark) {
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return Column(
       children: [
         SizedBox(
@@ -247,25 +291,29 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           height: 55,
           child: ElevatedButton(
             onPressed: () {
-              // ✅ Vide la pile de navigation et affiche directement le Profil
-            Navigator.pushAndRemoveUntil(
-  context,
-  MaterialPageRoute(builder: (context) => const MainScreen()), // ✅ Retourne à l'écran principal
-  (route) => false,
-);
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const MainScreen()),
+                (route) => false,
+              );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
+              // ✅ Bouton : noir en clair / blanc en sombre
+              backgroundColor: accentColor,
+              foregroundColor: accentTextColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               elevation: 0,
             ),
-            child: const Text(
+            child: Text(
               'Retour à mon profil',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: accentTextColor,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ),
-        // ✅ Le bouton "Voir l'historique" a été complètement supprimé ici
       ],
     );
   }

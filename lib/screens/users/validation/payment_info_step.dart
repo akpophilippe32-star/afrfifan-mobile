@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 import 'confirmation_screen.dart';
 
 class PaymentInfoStep extends StatefulWidget {
@@ -35,98 +36,46 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
   final _accountHolderController = TextEditingController();
   bool _isLoading = false;
 
-  // ✅ Opérateur sélectionné : 'mtn', 'moov' ou 'orange'
   String _selectedOperator = 'mtn';
 
-  // ─── CONSTANTES DE COULEUR ────────────────────────────────
-  static const Color _primaryColor = Color(0xFF8B5CF6);
-  static const Color _backgroundColor = Color(0xFF0A0A0A);
-  static const Color _cardColor = Color(0xFF1A1A1A);
-  static const Color _borderColor = Color(0xFF2A2A2A);
-  static const Color _textColor = Colors.white;
-  static const Color _textSecondaryColor = Color(0xFF888888);
-  static const Color _hintColor = Color(0xFF555555);
-
-  // Couleurs des opérateurs
+  // ✅ Couleurs des opérateurs conservées (identité de marque)
   static const Color _mtnColor = Color(0xFFFFCC00);
   static const Color _moovColor = Color(0xFF00B2A9);
   static const Color _orangeColor = Color(0xFFFF6600);
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+
     return Scaffold(
-      backgroundColor: _backgroundColor,
+      backgroundColor: bgColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildProgressBar(),
+              _buildProgressBar(isDark),
               const SizedBox(height: 30),
-
-              const Text(
-                'Informations de paiement',
-                style: TextStyle(
-                  color: _textColor,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Où souhaitez-vous recevoir vos gains ?',
-                style: TextStyle(
-                  color: _textSecondaryColor,
-                  fontSize: 14,
-                ),
-              ),
+              _buildTitle(isDark),
               const SizedBox(height: 30),
-
-              // ─── SÉLECTION DE L'OPÉRATEUR ──────────────────
-              _buildOperatorSelector(),
+              _buildOperatorSelector(isDark),
               const SizedBox(height: 24),
-
-              // ─── CARTE DE L'OPÉRATEUR SÉLECTIONNÉ ──────────
               _buildOperatorCard(),
               const SizedBox(height: 30),
-
-              // ─── CHAMPS DE SAISIE ──────────────────────────
-              _buildMobileMoneyFields(),
+              _buildMobileMoneyFields(isDark),
               const SizedBox(height: 40),
-
-              // ─── BOUTON DE SOUMISSION ──────────────────────
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _validateAndSubmit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 24,
-                          width: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 3,
-                          ),
-                        )
-                      : const Text(
-                          'Soumettre ma candidature',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                ),
-              ),
+              _buildSubmitButton(isDark),
             ],
           ),
         ),
@@ -134,35 +83,82 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
     );
   }
 
-  // ─── WIDGETS ────────────────────────────────────────────────
+  Widget _buildTitle(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? const Color(0xFF888888) : Colors.black54;
 
-  Widget _buildProgressBar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Informations de paiement',
+          style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Où souhaitez-vous recevoir vos gains ?',
+          style: TextStyle(color: subTextColor, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubmitButton(bool isDark) {
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
+    return SizedBox(
+      width: double.infinity,
+      height: 55,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _validateAndSubmit,
+        style: ElevatedButton.styleFrom(
+          // ✅ Bouton : noir en clair / blanc en sombre
+          backgroundColor: accentColor,
+          foregroundColor: accentTextColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 0,
+        ),
+        child: _isLoading
+            ? SizedBox(
+                height: 24,
+                width: 24,
+                child: CircularProgressIndicator(color: accentTextColor, strokeWidth: 3),
+              )
+            : Text(
+                'Soumettre ma candidature',
+                style: TextStyle(
+                  color: accentTextColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildProgressBar(bool isDark) {
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final progressBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE5E7EB);
+
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
+            Text(
               'Étape 3/3',
-              style: TextStyle(
-                color: _primaryColor,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(color: accentColor, fontSize: 14, fontWeight: FontWeight.w600),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: _primaryColor.withOpacity(0.2),
+                color: accentColor.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Text(
+              child: Text(
                 '3/3',
-                style: TextStyle(
-                  color: _primaryColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(color: accentColor, fontSize: 14, fontWeight: FontWeight.bold),
               ),
             ),
           ],
@@ -170,10 +166,10 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
         const SizedBox(height: 12),
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: const LinearProgressIndicator(
+          child: LinearProgressIndicator(
             value: 1.0,
-            backgroundColor: Color(0xFF1A1A1A),
-            valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
+            backgroundColor: progressBg,
+            valueColor: AlwaysStoppedAnimation<Color>(accentColor),
             minHeight: 6,
           ),
         ),
@@ -181,32 +177,32 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
     );
   }
 
-  Widget _buildOperatorSelector() {
+  Widget _buildOperatorSelector(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _cardColor,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Choisissez votre opérateur',
-            style: TextStyle(
-              color: _textColor,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _operatorOption('mtn', 'MTN', _mtnColor),
-              _operatorOption('moov', 'Moov', _moovColor),
-              _operatorOption('orange', 'Orange', _orangeColor),
+              _operatorOption('mtn', 'MTN', _mtnColor, isDark),
+              _operatorOption('moov', 'Moov', _moovColor, isDark),
+              _operatorOption('orange', 'Orange', _orangeColor, isDark),
             ],
           ),
         ],
@@ -214,8 +210,13 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
     );
   }
 
-  Widget _operatorOption(String value, String label, Color color) {
+  Widget _operatorOption(String value, String label, Color color, bool isDark) {
     final isSelected = _selectedOperator == value;
+    // ✅ Fond interne : noir en clair / gris foncé en sombre (ou blanc en clair selon design)
+    final innerBg = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+    final unselectedBorder = isDark ? Colors.grey.shade700 : Colors.grey.shade300;
+    final unselectedText = isDark ? Colors.grey.shade500 : Colors.grey.shade600;
+
     return GestureDetector(
       onTap: () => setState(() => _selectedOperator = value),
       child: Column(
@@ -224,10 +225,10 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
             width: 70,
             height: 70,
             decoration: BoxDecoration(
-              color: isSelected ? color.withOpacity(0.2) : _backgroundColor,
+              color: isSelected ? color.withOpacity(0.2) : innerBg,
               shape: BoxShape.circle,
               border: Border.all(
-                color: isSelected ? color : Colors.grey.shade700,
+                color: isSelected ? color : unselectedBorder,
                 width: isSelected ? 3 : 1,
               ),
             ),
@@ -235,7 +236,7 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
               child: Text(
                 label[0],
                 style: TextStyle(
-                  color: isSelected ? color : Colors.grey.shade500,
+                  color: isSelected ? color : unselectedText,
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
                 ),
@@ -246,13 +247,12 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? color : Colors.grey.shade500,
+              color: isSelected ? color : unselectedText,
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
           ),
-          if (isSelected)
-            const SizedBox(height: 4),
+          if (isSelected) const SizedBox(height: 4),
           if (isSelected)
             Container(
               width: 20,
@@ -302,6 +302,7 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
+        // ✅ Couleur de l'opérateur conservée
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
       ),
@@ -322,104 +323,90 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
               children: [
                 Text(
                   operatorName,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 Text(
                   'Retrait rapide et sécurisé',
-                  style: TextStyle(
-                    color: textColor.withOpacity(0.8),
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: textColor.withOpacity(0.8), fontSize: 13),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.check_circle, color: Colors.white, size: 28),
+          // ✅ Icône check adaptée au contraste de la carte opérateur
+          Icon(Icons.check_circle, color: textColor, size: 28),
         ],
       ),
     );
   }
 
-  // ✅ CHAMPS DE SAISIE RÉELLEMENT SOMBRES
-  Widget _buildMobileMoneyFields() {
+  Widget _buildMobileMoneyFields(bool isDark) {
+    final subTextColor = isDark ? const Color(0xFF888888) : Colors.black54;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final hintColor = isDark ? const Color(0xFF555555) : Colors.black38;
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Numéro de compte',
-          style: TextStyle(
-            color: _textSecondaryColor,
-            fontSize: 14,
-          ),
+          style: TextStyle(color: subTextColor, fontSize: 14),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: _cardColor,
+            color: cardColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _borderColor),
+            border: Border.all(color: borderColor),
           ),
           child: TextField(
             controller: _accountNumberController,
-            style: const TextStyle(color: _textColor),
+            style: TextStyle(color: textColor),
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
               hintText: 'Ex: 97 XX XX XX',
-              hintStyle: TextStyle(color: _hintColor),
-              prefixIcon: const Icon(Icons.phone, color: _primaryColor),
+              hintStyle: TextStyle(color: hintColor),
+              // ✅ Icône accent au lieu de violette
+              prefixIcon: Icon(Icons.phone, color: accentColor),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
-              ),
-              // ✅ FORCER LE FOND SOMBRE
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               filled: true,
-              fillColor: _cardColor,
+              fillColor: cardColor,
             ),
           ),
         ),
         const SizedBox(height: 20),
-        const Text(
+        Text(
           'Nom du titulaire du compte',
-          style: TextStyle(
-            color: _textSecondaryColor,
-            fontSize: 14,
-          ),
+          style: TextStyle(color: subTextColor, fontSize: 14),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: _cardColor,
+            color: cardColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _borderColor),
+            border: Border.all(color: borderColor),
           ),
           child: TextField(
             controller: _accountHolderController,
-            style: const TextStyle(color: _textColor),
+            style: TextStyle(color: textColor),
             decoration: InputDecoration(
               hintText: 'Doit correspondre à votre pièce d\'identité',
-              hintStyle: TextStyle(color: _hintColor),
-              prefixIcon: const Icon(Icons.person, color: _primaryColor),
+              hintStyle: TextStyle(color: hintColor),
+              // ✅ Icône accent au lieu de violette
+              prefixIcon: Icon(Icons.person, color: accentColor),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
-              ),
-              // ✅ FORCER LE FOND SOMBRE
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               filled: true,
-              fillColor: _cardColor,
+              fillColor: cardColor,
             ),
           ),
         ),
       ],
     );
   }
-
-  // ─── VALIDATION ET SOUMISSION ─────────────────────────────
 
   Future<void> _validateAndSubmit() async {
     if (_accountNumberController.text.trim().isEmpty) {
@@ -477,16 +464,11 @@ class _PaymentInfoStepState extends State<PaymentInfoStep> {
       debugPrint('❌ ERREUR : $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur : ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Erreur : ${e.toString()}'), backgroundColor: Colors.red),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

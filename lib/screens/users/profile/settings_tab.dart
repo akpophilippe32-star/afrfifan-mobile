@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../services/dashboard_service.dart';
+import '../../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 
-/// Onglet 5 : Paramètres
-/// Permet de modifier les prix d'abonnement et voir les infos du créateur
 class SettingsTab extends StatefulWidget {
   const SettingsTab({Key? key}) : super(key: key);
 
@@ -22,7 +21,7 @@ class _SettingsTabState extends State<SettingsTab> {
   bool _isVerified = false;
   double _premiumPrice = 1000;
   double _proPrice = 5000;
-  
+
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -46,7 +45,6 @@ class _SettingsTabState extends State<SettingsTab> {
     setState(() => _isLoading = true);
 
     try {
-      // ✅ CORRECTION : Suppression de 'email' de la requête
       final profile = await supabase
           .from('profiles')
           .select('username, full_name, is_verified, premium_price, pro_price')
@@ -134,8 +132,27 @@ class _SettingsTabState extends State<SettingsTab> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final fieldBg = isDark ? const Color(0xFF0A0A0A) : const Color(0xFFFFFFFF);
+    final dividerColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+      return Center(child: CircularProgressIndicator(color: accentColor));
     }
 
     return SingleChildScrollView(
@@ -143,28 +160,38 @@ class _SettingsTabState extends State<SettingsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Infos du compte
-          const Text(
+          // ─── MON COMPTE ───
+          Text(
             'Mon Compte',
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
+              color: cardColor,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF2A2A2A)),
+              border: Border.all(color: borderColor),
             ),
             child: Column(
               children: [
-                _buildInfoRow('Nom', _userName, Icons.person),
-                const Divider(color: Color(0xFF2A2A2A), height: 24),
-                // ✅ CORRECTION : Ligne Email supprimée ici
+                _buildInfoRow(
+                  'Nom',
+                  _userName,
+                  Icons.person,
+                  textColor: textColor,
+                  subTextColor: subTextColor,
+                  accentColor: accentColor,
+                ),
+                Divider(color: dividerColor, height: 24),
                 _buildInfoRow(
                   'Statut',
                   _isVerified ? 'Vérifié ✓' : 'Non vérifié',
                   Icons.verified,
+                  textColor: textColor,
+                  subTextColor: subTextColor,
+                  accentColor: accentColor,
+                  // ✅ Vert / Orange conservés (sémantique)
                   valueColor: _isVerified ? Colors.green : Colors.orange,
                 ),
               ],
@@ -172,105 +199,107 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
           const SizedBox(height: 32),
 
-          // Prix d'abonnement
-          const Text(
+          // ─── TARIFS ───
+          Text(
             'Mes Tarifs d\'Abonnement',
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
+              color: cardColor,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF2A2A2A)),
+              border: Border.all(color: borderColor),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Abonnement Premium',
-                  style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Accès au contenu exclusif de base',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                  style: TextStyle(color: subTextColor, fontSize: 12),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _premiumPriceController,
                   keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: textColor),
                   decoration: InputDecoration(
                     hintText: 'Min. 500 FCFA',
-                    hintStyle: const TextStyle(color: Colors.grey),
+                    hintStyle: TextStyle(color: subTextColor),
                     filled: true,
-                    fillColor: const Color(0xFF0A0A0A),
+                    fillColor: fieldBg,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
                     ),
                     suffixText: 'FCFA',
-                    suffixStyle: const TextStyle(color: Colors.grey),
+                    suffixStyle: TextStyle(color: subTextColor),
                   ),
                 ),
                 const SizedBox(height: 24),
 
-                const Text(
+                Text(
                   'Abonnement Pro',
-                  style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Accès complet + messages privés + appels',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                  style: TextStyle(color: subTextColor, fontSize: 12),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _proPriceController,
                   keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: textColor),
                   decoration: InputDecoration(
                     hintText: 'Min. 2000 FCFA',
-                    hintStyle: const TextStyle(color: Colors.grey),
+                    hintStyle: TextStyle(color: subTextColor),
                     filled: true,
-                    fillColor: const Color(0xFF0A0A0A),
+                    fillColor: fieldBg,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
                     ),
                     suffixText: 'FCFA',
-                    suffixStyle: const TextStyle(color: Colors.grey),
+                    suffixStyle: TextStyle(color: subTextColor),
                   ),
                 ),
                 const SizedBox(height: 24),
 
-                // Bouton Sauvegarder
+                // ─── BOUTON SAUVEGARDER ───
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
                     onPressed: _isSaving ? null : _savePrices,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B5CF6),
+                      // ✅ Bouton : noir en clair / blanc en sombre
+                      backgroundColor: accentColor,
+                      foregroundColor: accentTextColor,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     child: _isSaving
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator(
-                              color: Colors.white,
+                              color: accentTextColor,
                               strokeWidth: 2,
                             ),
                           )
-                        : const Text(
+                        : Text(
                             'Sauvegarder les prix',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: accentTextColor,
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
@@ -285,21 +314,30 @@ class _SettingsTabState extends State<SettingsTab> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, IconData icon, {Color? valueColor}) {
+  Widget _buildInfoRow(
+    String label,
+    String value,
+    IconData icon, {
+    Color? valueColor,
+    required Color textColor,
+    required Color subTextColor,
+    required Color accentColor,
+  }) {
     return Row(
       children: [
-        Icon(icon, color: const Color(0xFF8B5CF6), size: 20),
+        // ✅ Icône : noir en clair / blanc en sombre
+        Icon(icon, color: accentColor, size: 20),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(label, style: TextStyle(color: subTextColor, fontSize: 12)),
               const SizedBox(height: 2),
               Text(
                 value,
                 style: TextStyle(
-                  color: valueColor ?? Colors.white,
+                  color: valueColor ?? textColor,
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),

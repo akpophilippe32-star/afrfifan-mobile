@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 import '../creator/creator_profile_screen.dart';
 
 class TrendingCreatorsScreen extends StatefulWidget {
@@ -10,15 +10,14 @@ class TrendingCreatorsScreen extends StatefulWidget {
   State<TrendingCreatorsScreen> createState() => _TrendingCreatorsScreenState();
 }
 
-// ✅ 1. AJOUT DU MIXIN POUR GARDER L'ÉCRAN EN MÉMOIRE
 class _TrendingCreatorsScreenState extends State<TrendingCreatorsScreen> with AutomaticKeepAliveClientMixin {
   final supabase = Supabase.instance.client;
-  
+
   List<Map<String, dynamic>> _creators = [];
   Set<String> _followedIds = {};
   String? _currentUserId;
   bool _isLoading = true;
-  bool _hasLoadedOnce = false; // ✅ Pour charger une seule fois
+  bool _hasLoadedOnce = false;
 
   @override
   void initState() {
@@ -27,12 +26,10 @@ class _TrendingCreatorsScreenState extends State<TrendingCreatorsScreen> with Au
     _loadData();
   }
 
-  // ✅ 2. DIT À FLUTTER DE NE PAS DÉTRUIRE CET ÉCRAN
   @override
   bool get wantKeepAlive => true;
 
   Future<void> _loadData() async {
-    // ✅ Si déjà chargé, on ne fait rien (gain de temps et de données)
     if (_hasLoadedOnce) {
       debugPrint('⏭️ TrendingCreators déjà en mémoire, pas de rechargement');
       return;
@@ -40,27 +37,23 @@ class _TrendingCreatorsScreenState extends State<TrendingCreatorsScreen> with Au
 
     setState(() => _isLoading = true);
     try {
-      // 1. Récupérer les IDs des créateurs déjà suivis
       if (_currentUserId != null) {
         final followsResponse = await supabase
             .from('follows')
             .select('following_id')
             .eq('follower_id', _currentUserId!);
-        
+
         _followedIds = followsResponse.map<String>((row) => row['following_id'] as String).toSet();
       }
 
-      // 2. Récupérer les profils (FILTRE .neq AVANT .limit)
       var query = supabase.from('profiles').select('id, username, full_name, avatar_url');
       if (_currentUserId != null) {
         query = query.neq('id', _currentUserId!);
       }
       final response = await query.limit(50);
-      
+
       _creators = List<Map<String, dynamic>>.from(response);
-      
-      // ✅ On marque comme chargé pour la prochaine fois
-      _hasLoadedOnce = true; 
+      _hasLoadedOnce = true;
 
       if (mounted) setState(() => _isLoading = false);
     } catch (e) {
@@ -69,13 +62,11 @@ class _TrendingCreatorsScreenState extends State<TrendingCreatorsScreen> with Au
     }
   }
 
-  // Fonction pour Suivre / Ne plus suivre
   Future<void> _toggleFollow(String creatorId) async {
     if (_currentUserId == null) return;
 
     final isFollowing = _followedIds.contains(creatorId);
 
-    // Mise à jour immédiate de l'interface (Optimistic UI)
     setState(() {
       if (isFollowing) {
         _followedIds.remove(creatorId);
@@ -98,7 +89,6 @@ class _TrendingCreatorsScreenState extends State<TrendingCreatorsScreen> with Au
       }
     } catch (e) {
       debugPrint('❌ Erreur toggle follow: $e');
-      // En cas d'erreur, on annule le changement visuel
       setState(() {
         if (isFollowing) {
           _followedIds.add(creatorId);
@@ -111,35 +101,63 @@ class _TrendingCreatorsScreenState extends State<TrendingCreatorsScreen> with Au
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 3. OBLIGATOIRE QUAND ON UTILISE AutomaticKeepAliveClientMixin
-    super.build(context); 
+    super.build(context);
+
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey.shade400 : Colors.black54;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final cardBorder = isDark ? Colors.white10 : Colors.black12;
+    final avatarBg = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final avatarIcon = isDark ? Colors.white : Colors.black87;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
+    // Bouton "Suivi" (état inactif)
+    final followedBtnBg = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final followedBtnText = isDark ? Colors.white70 : Colors.black54;
+    final followedBtnBorder = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Créateurs Populaires',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? Center(child: CircularProgressIndicator(color: accentColor))
           : _creators.isEmpty
-              ? const Center(child: Text('Aucun créateur trouvé.', style: TextStyle(color: Colors.white54)))
+              ? Center(
+                  child: Text(
+                    'Aucun créateur trouvé.',
+                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
+                  ),
+                )
               : RefreshIndicator(
-                  // ✅ 4. LE PULL-TO-REFRESH FORCE LE RECHARGEMENT
                   onRefresh: () async {
                     _hasLoadedOnce = false;
                     await _loadData();
                   },
-                  color: AppColors.primary,
+                  color: accentColor,
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     itemCount: _creators.length,
@@ -153,14 +171,15 @@ class _TrendingCreatorsScreenState extends State<TrendingCreatorsScreen> with Au
 
                       return Container(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        padding: const EdgeInsets.all(16), // ✅ Plus d'espace pour respirer
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A1A1A), // ✅ Fond sombre élégant sans bordure agressive
+                          color: cardColor,
                           borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: cardBorder, width: 1),
                         ),
                         child: Row(
                           children: [
-                            // ✅ Avatar cliquable (légèrement plus grand et propre)
+                            // Avatar cliquable
                             GestureDetector(
                               onTap: () {
                                 Navigator.push(
@@ -172,14 +191,16 @@ class _TrendingCreatorsScreenState extends State<TrendingCreatorsScreen> with Au
                               },
                               child: CircleAvatar(
                                 radius: 26,
-                                backgroundColor: Colors.grey.shade800,
+                                backgroundColor: avatarBg,
                                 backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-                                child: avatarUrl == null ? const Icon(Icons.person, color: Colors.white, size: 28) : null,
+                                child: avatarUrl == null
+                                    ? Icon(Icons.person, color: avatarIcon, size: 28)
+                                    : null,
                               ),
                             ),
                             const SizedBox(width: 14),
-                            
-                            // ✅ Nom et Username (PROTÉGÉS CONTRE LES TEXTES TROP LONGS)
+
+                            // Nom et Username
                             Expanded(
                               child: GestureDetector(
                                 onTap: () {
@@ -195,34 +216,41 @@ class _TrendingCreatorsScreenState extends State<TrendingCreatorsScreen> with Au
                                   children: [
                                     Text(
                                       fullName.isNotEmpty ? fullName : username,
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                                      maxLines: 1, // ✅ Empêche le texte de passer à la ligne
-                                      overflow: TextOverflow.ellipsis, // ✅ Ajoute "..." si trop long
+                                      style: TextStyle(
+                                        color: textColor,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
                                       '@$username',
-                                      style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-                                      maxLines: 1, // ✅ Empêche le texte de passer à la ligne
-                                      overflow: TextOverflow.ellipsis, // ✅ Ajoute "..." si trop long
+                                      style: TextStyle(color: subTextColor, fontSize: 13),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),
                               ),
                             ),
 
-                            // ✅ Bouton Suivre / Suivi (Compact et élégant)
+                            // Bouton Suivre / Suivi
                             SizedBox(
                               height: 34,
-                              width: 85, // ✅ Largeur fixe pour éviter qu'il n'écrase le texte
+                              width: 85,
                               child: ElevatedButton(
                                 onPressed: () => _toggleFollow(creatorId),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: isFollowing ? Colors.grey.shade800 : AppColors.primary,
-                                  foregroundColor: Colors.white,
+                                  // ✅ Bouton actif : noir en clair / blanc en sombre
+                                  backgroundColor: isFollowing ? followedBtnBg : accentColor,
+                                  foregroundColor: isFollowing ? followedBtnText : accentTextColor,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20), // ✅ Forme de pilule
-                                    side: isFollowing ? BorderSide(color: Colors.grey.shade700) : BorderSide.none,
+                                    borderRadius: BorderRadius.circular(20),
+                                    side: isFollowing
+                                        ? BorderSide(color: followedBtnBorder)
+                                        : BorderSide.none,
                                   ),
                                   padding: EdgeInsets.zero,
                                   elevation: 0,

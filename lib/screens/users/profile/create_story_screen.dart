@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path/path.dart' as path;
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 
 class CreateStoryScreen extends StatefulWidget {
   const CreateStoryScreen({super.key});
@@ -13,28 +14,26 @@ class CreateStoryScreen extends StatefulWidget {
 
 class _CreateStoryScreenState extends State<CreateStoryScreen> {
   final ImagePicker _picker = ImagePicker();
-  
-  // États pour le mode Média
+
   XFile? _selectedFile;
-  String _mediaType = 'image'; 
-  
-  // États pour le mode Texte
+  String _mediaType = 'image';
+
   bool _isTextMode = false;
   final TextEditingController _textController = TextEditingController();
-  String _selectedColor = '#8B5CF6'; // Violet Afrifan par défaut
+  // ✅ Noir par défaut au lieu du violet Afrifan
+  String _selectedColor = '#1A1A1A';
 
   bool _isUploading = false;
 
-  // ✅ Les 5 couleurs disponibles (Format Hexadécimal)
+  // ✅ Palette sans violet
   final List<Map<String, String>> _availableColors = [
-    {'name': 'Violet', 'hex': '#8B5CF6'}, // Couleur Afrifan
+    {'name': 'Noir', 'hex': '#1A1A1A'},
     {'name': 'Jaune', 'hex': '#FBBF24'},
     {'name': 'Rouge', 'hex': '#EF4444'},
     {'name': 'Bleu', 'hex': '#3B82F6'},
     {'name': 'Blanc', 'hex': '#FFFFFF'},
   ];
 
-  // Détermine si le texte doit être noir ou blanc selon le fond
   Color _getTextColor(String hexColor) {
     if (hexColor == '#FFFFFF' || hexColor == '#FBBF24') {
       return Colors.black;
@@ -48,10 +47,8 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
     super.dispose();
   }
 
-  // ✅ 1. SÉLECTIONNER UN FICHIER (Photo ou Vidéo)
   Future<void> _pickMedia(bool isVideo) async {
     try {
-      // ✅ CORRECTION 1 : videoQuality retiré car non supporté par pickMedia
       final XFile? file = await _picker.pickMedia(
         imageQuality: 80,
       );
@@ -59,7 +56,7 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
         setState(() {
           _selectedFile = file;
           _mediaType = isVideo ? 'video' : 'image';
-          _isTextMode = false; // On bascule en mode média
+          _isTextMode = false;
         });
       }
     } catch (e) {
@@ -67,7 +64,6 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
     }
   }
 
-  // ✅ 2. UPLOADER ET ENREGISTRER LE STATUT
   Future<void> _publishStory() async {
     if (!_isTextMode && _selectedFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -131,25 +127,60 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white54 : Colors.black45;
+    final unselectedTabBg = isDark ? Colors.grey.shade900 : Colors.grey.shade200;
+    final unselectedTabText = isDark ? Colors.white : Colors.black87;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+    final dividerColor = isDark ? Colors.white10 : Colors.black12;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bgColor,
         elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(context)),
-        title: const Text('Nouveau Statut', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        leading: IconButton(
+          icon: Icon(Icons.close, color: textColor),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Nouveau Statut',
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+        ),
         actions: [
           if (!_isUploading)
             TextButton(
               onPressed: _publishStory,
-              child: const Text('Publier', style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text(
+                'Publier',
+                style: TextStyle(
+                  color: accentColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
             ),
         ],
       ),
       body: _isUploading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
+          ? Center(
+              child: CircularProgressIndicator(color: accentColor),
+            )
           : Column(
               children: [
+                // ─── SÉLECTEUR TEXTE / MÉDIA ───
                 Container(
                   padding: const EdgeInsets.all(16),
                   child: Row(
@@ -160,10 +191,19 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(
-                              color: _isTextMode ? const Color(0xFF8B5CF6) : Colors.grey.shade900,
+                              // ✅ Tab actif : noir en clair / blanc en sombre
+                              color: _isTextMode ? accentColor : unselectedTabBg,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Center(child: Text('Texte', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                            child: Center(
+                              child: Text(
+                                'Texte',
+                                style: TextStyle(
+                                  color: _isTextMode ? accentTextColor : unselectedTabText,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -174,31 +214,40 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(
-                              color: !_isTextMode ? const Color(0xFF8B5CF6) : Colors.grey.shade900,
+                              color: !_isTextMode ? accentColor : unselectedTabBg,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Center(child: Text('Photo / Vidéo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                            child: Center(
+                              child: Text(
+                                'Photo / Vidéo',
+                                style: TextStyle(
+                                  color: !_isTextMode ? accentTextColor : unselectedTabText,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const Divider(color: Colors.white10),
+                Divider(color: dividerColor),
 
                 Expanded(
-                  child: _isTextMode ? _buildTextEditor() : _buildMediaPicker(),
+                  child: _isTextMode
+                      ? _buildTextEditor(isDark)
+                      : _buildMediaPicker(isDark),
                 ),
               ],
             ),
     );
   }
 
-  // ✅ INTERFACE D'ÉDITION DE TEXTE
-  Widget _buildTextEditor() {
+  // ─── ÉDITEUR TEXTE ───
+  Widget _buildTextEditor(bool isDark) {
     return Container(
       width: double.infinity,
-      // ✅ CORRECTION 2 : int.parse() convertit la String en int pour la classe Color
       color: Color(int.parse(_selectedColor.replaceAll('#', '0xFF'))),
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -214,9 +263,11 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
               fontWeight: FontWeight.bold,
               height: 1.4,
             ),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Quoi de neuf ?',
-              hintStyle: TextStyle(color: Colors.white54),
+              hintStyle: TextStyle(
+                color: _getTextColor(_selectedColor).withOpacity(0.5),
+              ),
               border: InputBorder.none,
             ),
             onChanged: (_) => setState(() {}),
@@ -239,14 +290,23 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      // ✅ CORRECTION 3 : int.parse() ici aussi
                       color: Color(int.parse(hex.replaceAll('#', '0xFF'))),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isSelected ? Colors.white : Colors.transparent,
+                        // ✅ Bordure de sélection : noir en clair / blanc en sombre
+                        color: isSelected
+                            ? (isDark ? Colors.white : Colors.black)
+                            : Colors.transparent,
                         width: 3,
                       ),
-                      boxShadow: isSelected ? [BoxShadow(color: Colors.white.withOpacity(0.5), blurRadius: 8)] : null,
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: (isDark ? Colors.white : Colors.black).withOpacity(0.5),
+                                blurRadius: 8,
+                              )
+                            ]
+                          : null,
                     ),
                   ),
                 );
@@ -258,8 +318,13 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
     );
   }
 
-  // ✅ INTERFACE DE SÉLECTION MÉDIA
-  Widget _buildMediaPicker() {
+  // ─── SÉLECTEUR MÉDIA ───
+  Widget _buildMediaPicker(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white54 : Colors.black45;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -290,16 +355,30 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
               ],
             )
           else
-            const Icon(Icons.image_outlined, color: Colors.white54, size: 80),
-          
+            Icon(Icons.image_outlined, color: subTextColor, size: 80),
+
           const SizedBox(height: 32),
-          
+
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildPickButton(Icons.photo_camera, 'Photo', () => _pickMedia(false)),
+              _buildPickButton(
+                Icons.photo_camera,
+                'Photo',
+                () => _pickMedia(false),
+                accentColor: accentColor,
+                accentTextColor: accentTextColor,
+                textColor: textColor,
+              ),
               const SizedBox(width: 24),
-              _buildPickButton(Icons.videocam, 'Vidéo', () => _pickMedia(true)),
+              _buildPickButton(
+                Icons.videocam,
+                'Vidéo',
+                () => _pickMedia(true),
+                accentColor: accentColor,
+                accentTextColor: accentTextColor,
+                textColor: textColor,
+              ),
             ],
           ),
         ],
@@ -307,7 +386,14 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
     );
   }
 
-  Widget _buildPickButton(IconData icon, String label, VoidCallback onTap) {
+  Widget _buildPickButton(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    required Color accentColor,
+    required Color accentTextColor,
+    required Color textColor,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -315,13 +401,17 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF8B5CF6),
+              // ✅ Bouton : noir en clair / blanc en sombre
+              color: accentColor,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: Colors.white, size: 32),
+            child: Icon(icon, color: accentTextColor, size: 32),
           ),
           const SizedBox(height: 8),
-          Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Text(
+            label,
+            style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+          ),
         ],
       ),
     );

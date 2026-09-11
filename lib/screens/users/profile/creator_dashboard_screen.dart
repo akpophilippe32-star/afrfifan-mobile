@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 import 'overview_tab.dart';
 import 'wallet_tab.dart';
 import 'subscribers_tab.dart';
 import 'stats_tab.dart';
 import 'settings_tab.dart';
 import 'tips_tab.dart';
-import 'go_live_screen.dart'; 
-import 'creator_shop_tab.dart'; 
-import 'sales_tab.dart'; // ✅ AJOUTÉ : Import du nouvel onglet Mes Ventes
+import 'go_live_screen.dart';
+import 'creator_shop_tab.dart';
+import 'sales_tab.dart';
 
 class CreatorDashboardScreen extends StatefulWidget {
   const CreatorDashboardScreen({super.key});
@@ -19,7 +20,7 @@ class CreatorDashboardScreen extends StatefulWidget {
 
 class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   final supabase = Supabase.instance.client;
-  
+
   int _selectedIndex = 0;
   String _userName = "Créateur";
 
@@ -39,7 +40,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
           .select('full_name, username')
           .eq('id', userId)
           .maybeSingle();
-          
+
       if (profile != null && mounted) {
         setState(() {
           _userName = profile['full_name'] ?? profile['username'] ?? "Créateur";
@@ -52,11 +53,11 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
 
   void _onItemTapped(int index) {
     setState(() => _selectedIndex = index);
-    Navigator.pop(context); // Ferme le drawer après le clic
+    Navigator.pop(context);
   }
 
   void _goLive() {
-    Navigator.pop(context); 
+    Navigator.pop(context);
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const GoLiveScreen()),
@@ -65,92 +66,162 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      drawer: _buildDrawer(),
+      backgroundColor: bgColor,
+      drawer: _buildDrawer(isDark),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: bgColor,
         elevation: 0,
         leading: Builder(
           builder: (context) => IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white, size: 28),
+            icon: Icon(Icons.menu, color: textColor, size: 28),
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
         title: Text(
           _getAppBarTitle(),
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 20),
         ),
       ),
       body: IndexedStack(
         index: _selectedIndex,
         children: const [
-          OverviewTab(),       // Index 0
-          WalletTab(),         // Index 1
-          SubscribersTab(),    // Index 2
-          StatsTab(),          // Index 3
-          SettingsTab(),       // Index 4
-          TipsTab(),           // Index 5
-          CreatorShopTab(),    // Index 6
-          SalesTab(),          // ✅ Index 7 : NOUVEL ONGLET MES VENTES
+          OverviewTab(),
+          WalletTab(),
+          SubscribersTab(),
+          StatsTab(),
+          SettingsTab(),
+          TipsTab(),
+          CreatorShopTab(),
+          SalesTab(),
         ],
       ),
     );
   }
 
-  Widget _buildDrawer() {
+  Widget _buildDrawer(bool isDark) {
+    final drawerBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final headerBg = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white70 : Colors.black54;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+    final selectedTextColor = isDark ? Colors.white : Colors.black;
+    final unselectedTextColor = isDark ? Colors.white : Colors.black87;
+    final unselectedIconColor = isDark ? Colors.grey : Colors.grey.shade600;
+    final dividerColor = isDark ? Colors.white24 : Colors.black12;
+
     return Drawer(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: drawerBg,
       child: Column(
         children: [
+          // ─── EN-TÊTE ───
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
-            decoration: const BoxDecoration(
-              color: Color(0xFF8B5CF6),
-              borderRadius: BorderRadius.only(bottomRight: Radius.circular(30)),
+            decoration: BoxDecoration(
+              // ✅ Plus de fond violet → gris clair/foncé adaptatif
+              color: headerBg,
+              borderRadius: const BorderRadius.only(bottomRight: Radius.circular(30)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const CircleAvatar(
-                  radius: 30, 
-                  backgroundColor: Colors.white, 
-                  child: Icon(Icons.person, color: Color(0xFF8B5CF6), size: 30)
+                CircleAvatar(
+                  radius: 30,
+                  // ✅ Avatar neutre
+                  backgroundColor: accentColor,
+                  child: Icon(Icons.person, color: accentTextColor, size: 30),
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  _userName, 
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
+                  _userName,
+                  style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const Text(
-                  'Espace Créateur', 
-                  style: TextStyle(color: Colors.white70, fontSize: 14)
+                Text(
+                  'Espace Créateur',
+                  style: TextStyle(color: subTextColor, fontSize: 14),
                 ),
               ],
             ),
           ),
+
+          // ─── MENU ───
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 10),
               children: [
-                _buildDrawerItem(0, Icons.dashboard_outlined, 'Vue d\'ensemble'),
-                _buildDrawerItem(1, Icons.account_balance_wallet_outlined, 'Portefeuille'),
-                _buildDrawerItem(2, Icons.people_outline, 'Abonnés'),
-                _buildDrawerItem(3, Icons.bar_chart_outlined, 'Statistiques'),
-                _buildDrawerItem(4, Icons.settings_outlined, 'Paramètres'),
-                _buildDrawerItem(5, Icons.local_cafe, 'Pourboires'),
-                _buildDrawerItem(6, Icons.storefront_outlined, 'Ma Boutique'),
-                _buildDrawerItem(7, Icons.trending_up, 'Mes Ventes'), // ✅ AJOUTÉ ICI (Icône tendance)
-                
-                const Divider(height: 32, color: Colors.white24, indent: 20, endIndent: 20),
-                
+                _buildDrawerItem(
+                  index: 0, icon: Icons.dashboard_outlined, title: 'Vue d\'ensemble',
+                  isDark: isDark, selectedTextColor: selectedTextColor,
+                  unselectedTextColor: unselectedTextColor, unselectedIconColor: unselectedIconColor,
+                  accentColor: accentColor,
+                ),
+                _buildDrawerItem(
+                  index: 1, icon: Icons.account_balance_wallet_outlined, title: 'Portefeuille',
+                  isDark: isDark, selectedTextColor: selectedTextColor,
+                  unselectedTextColor: unselectedTextColor, unselectedIconColor: unselectedIconColor,
+                  accentColor: accentColor,
+                ),
+                _buildDrawerItem(
+                  index: 2, icon: Icons.people_outline, title: 'Abonnés',
+                  isDark: isDark, selectedTextColor: selectedTextColor,
+                  unselectedTextColor: unselectedTextColor, unselectedIconColor: unselectedIconColor,
+                  accentColor: accentColor,
+                ),
+                _buildDrawerItem(
+                  index: 3, icon: Icons.bar_chart_outlined, title: 'Statistiques',
+                  isDark: isDark, selectedTextColor: selectedTextColor,
+                  unselectedTextColor: unselectedTextColor, unselectedIconColor: unselectedIconColor,
+                  accentColor: accentColor,
+                ),
+                _buildDrawerItem(
+                  index: 4, icon: Icons.settings_outlined, title: 'Paramètres',
+                  isDark: isDark, selectedTextColor: selectedTextColor,
+                  unselectedTextColor: unselectedTextColor, unselectedIconColor: unselectedIconColor,
+                  accentColor: accentColor,
+                ),
+                _buildDrawerItem(
+                  index: 5, icon: Icons.local_cafe, title: 'Pourboires',
+                  isDark: isDark, selectedTextColor: selectedTextColor,
+                  unselectedTextColor: unselectedTextColor, unselectedIconColor: unselectedIconColor,
+                  accentColor: accentColor,
+                ),
+                _buildDrawerItem(
+                  index: 6, icon: Icons.storefront_outlined, title: 'Ma Boutique',
+                  isDark: isDark, selectedTextColor: selectedTextColor,
+                  unselectedTextColor: unselectedTextColor, unselectedIconColor: unselectedIconColor,
+                  accentColor: accentColor,
+                ),
+                _buildDrawerItem(
+                  index: 7, icon: Icons.trending_up, title: 'Mes Ventes',
+                  isDark: isDark, selectedTextColor: selectedTextColor,
+                  unselectedTextColor: unselectedTextColor, unselectedIconColor: unselectedIconColor,
+                  accentColor: accentColor,
+                ),
+
+                Divider(height: 32, color: dividerColor, indent: 20, endIndent: 20),
+
+                // ─── LANCER UN LIVE (rouge conservé) ───
                 ListTile(
                   leading: const Icon(Icons.videocam, color: Colors.redAccent, size: 28),
                   title: const Text(
                     '🔴 Lancer un Live',
                     style: TextStyle(
-                      color: Colors.redAccent, 
+                      color: Colors.redAccent,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
@@ -166,33 +237,47 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     );
   }
 
-  Widget _buildDrawerItem(int index, IconData icon, String title) {
+  Widget _buildDrawerItem({
+    required int index,
+    required IconData icon,
+    required String title,
+    required bool isDark,
+    required Color selectedTextColor,
+    required Color unselectedTextColor,
+    required Color unselectedIconColor,
+    required Color accentColor,
+  }) {
     final isSelected = _selectedIndex == index;
     return ListTile(
-      leading: Icon(icon, color: isSelected ? const Color(0xFF8B5CF6) : Colors.grey),
+      leading: Icon(
+        icon,
+        // ✅ Sélectionné : noir en clair / blanc en sombre
+        color: isSelected ? accentColor : unselectedIconColor,
+      ),
       title: Text(
         title,
         style: TextStyle(
-          color: isSelected ? const Color(0xFF8B5CF6) : Colors.white,
+          color: isSelected ? selectedTextColor : unselectedTextColor,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),
       ),
-      trailing: isSelected ? const Icon(Icons.chevron_right, color: Color(0xFF8B5CF6)) : null,
+      trailing: isSelected
+          ? Icon(Icons.chevron_right, color: accentColor)
+          : null,
       onTap: () => _onItemTapped(index),
     );
   }
 
   String _getAppBarTitle() {
-    // ✅ MIS À JOUR AVEC "Mes Ventes" à l'index 7
     const titles = [
-      'Vue d\'ensemble', 
-      'Portefeuille', 
-      'Abonnés', 
-      'Statistiques', 
-      'Paramètres', 
+      'Vue d\'ensemble',
+      'Portefeuille',
+      'Abonnés',
+      'Statistiques',
+      'Paramètres',
       'Pourboires',
       'Ma Boutique',
-      'Mes Ventes' // ✅ AJOUTÉ ICI
+      'Mes Ventes',
     ];
     return titles[_selectedIndex];
   }

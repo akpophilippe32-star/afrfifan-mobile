@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
+import '../../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 
 class ViewStoryScreen extends StatefulWidget {
   final List<Map<String, dynamic>> stories;
@@ -29,14 +30,13 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
   VideoPlayerController? _videoController;
   Timer? _progressTimer;
   double _progress = 0.0;
-  
-  // États pour les interactions
+
   bool _hasLiked = false;
   int _viewCount = 0;
   int _likeCount = 0;
   bool _isCreator = false;
   List<Map<String, dynamic>> _interactions = [];
-  
+
   static const Duration _storyDuration = Duration(seconds: 5);
 
   @override
@@ -46,7 +46,6 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
     _loadCurrentStory();
   }
 
-  // ✅ Charge la story et enregistre la vue / récupère les stats
   Future<void> _loadCurrentStory() async {
     _stopTimers();
     _videoController?.dispose();
@@ -60,7 +59,6 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
     if (currentUserId != null) {
       _isCreator = (currentUserId == widget.creatorId);
 
-      // 1. Enregistrer la vue (Upsert)
       try {
         await Supabase.instance.client.from('story_interactions').upsert({
           'story_id': story['id'],
@@ -71,7 +69,6 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
         debugPrint("⚠️ [VIEW] Échec enregistrement vue (non bloquant) : $e");
       }
 
-      // 2. Récupérer les données selon le rôle
       if (_isCreator) {
         final response = await Supabase.instance.client
             .from('story_interactions')
@@ -92,14 +89,13 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
             .eq('story_id', story['id'])
             .eq('viewer_id', currentUserId)
             .maybeSingle();
-            
+
         if (mounted && response != null) {
           setState(() => _hasLiked = response['has_liked'] ?? false);
         }
       }
     }
 
-    // 3. Charger le média
     if (mediaType == 'video' && story['media_url'] != null) {
       _videoController = VideoPlayerController.networkUrl(
         Uri.parse(story['media_url']),
@@ -158,18 +154,16 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
     }
   }
 
-  // ✅ Basculer le like (Optimistic UI)
   Future<void> _toggleLike() async {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     if (currentUserId == null) return;
-    
+
     final newLikeState = !_hasLiked;
-    
-    // Mise à jour IMMÉDIATE de l'interface (le cœur devient rose instantanément)
-    setState(() => _hasLiked = newLikeState); 
+
+    setState(() => _hasLiked = newLikeState);
 
     final story = widget.stories[_currentIndex];
-    
+
     try {
       await Supabase.instance.client.from('story_interactions').upsert({
         'story_id': story['id'],
@@ -178,16 +172,21 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
       }, onConflict: 'story_id,viewer_id');
     } catch (e) {
       debugPrint("❌ [LIKE] Erreur base de données : $e");
-      // Annuler le changement visuel si l'envoi échoue
-      setState(() => _hasLiked = !newLikeState); 
+      setState(() => _hasLiked = !newLikeState);
     }
   }
 
-  // ✅ Afficher la liste des vues/likes pour le créateur
-  void _showInteractionsBottomSheet() {
+  void _showInteractionsBottomSheet(bool isDark) {
+    final sheetBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final handleColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
+    final avatarBg = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final avatarIcon = isDark ? Colors.white : Colors.black87;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Container(
@@ -197,17 +196,22 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(
-                child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(2))),
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(color: handleColor, borderRadius: BorderRadius.circular(2)),
+                ),
               ),
               const SizedBox(height: 20),
               Text(
                 'Vues et J\'aime ($_viewCount total)',
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               Expanded(
                 child: _interactions.isEmpty
-                    ? const Center(child: Text('Aucune vue pour le moment', style: TextStyle(color: Colors.grey)))
+                    ? Center(
+                        child: Text('Aucune vue pour le moment', style: TextStyle(color: subTextColor)),
+                      )
                     : ListView.builder(
                         itemCount: _interactions.length,
                         itemBuilder: (context, index) {
@@ -219,13 +223,18 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
 
                           return ListTile(
                             leading: CircleAvatar(
+                              backgroundColor: avatarBg,
                               backgroundImage: avatar != null ? NetworkImage(avatar) : null,
-                              child: avatar == null ? const Icon(Icons.person, color: Colors.white) : null,
+                              child: avatar == null ? Icon(Icons.person, color: avatarIcon) : null,
                             ),
-                            title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            title: Text(
+                              name,
+                              style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+                            ),
                             trailing: Icon(
                               hasLiked ? Icons.favorite : Icons.visibility,
-                              color: hasLiked ? Colors.red : Colors.grey,
+                              // ✅ Rouge conservé pour like, gris adaptatif pour vue
+                              color: hasLiked ? Colors.red : subTextColor,
                             ),
                           );
                         },
@@ -256,7 +265,19 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
     if (widget.stories.isEmpty) return const Scaffold(backgroundColor: Colors.black);
+
+    final accentColor = isDark ? Colors.white : Colors.black;
 
     final story = widget.stories[_currentIndex];
     final mediaType = story['media_type'] ?? 'image';
@@ -269,8 +290,10 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
       body: Stack(
         children: [
           // 1. CONTENU DE LA STORY
-          Positioned.fill(child: _buildStoryContent(mediaType, mediaUrl, textContent, backgroundColor)),
-          
+          Positioned.fill(
+            child: _buildStoryContent(mediaType, mediaUrl, textContent, backgroundColor, accentColor),
+          ),
+
           // 2. OVERLAY SOMBRE
           Positioned.fill(
             child: Container(
@@ -283,7 +306,7 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
             ),
           ),
 
-          // 3. HEADER (Barres de progression + Infos)
+          // 3. HEADER
           Positioned(
             top: MediaQuery.of(context).padding.top + 10, left: 16, right: 16,
             child: Column(
@@ -309,33 +332,41 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
                 Row(
                   children: [
                     CircleAvatar(
-                      radius: 18, backgroundColor: Colors.grey.shade800,
+                      radius: 18,
+                      backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
                       backgroundImage: widget.creatorAvatar != null ? NetworkImage(widget.creatorAvatar!) : null,
-                      child: widget.creatorAvatar == null ? const Icon(Icons.person, size: 18, color: Colors.white) : null,
+                      child: widget.creatorAvatar == null
+                          ? Icon(Icons.person, size: 18, color: isDark ? Colors.white : Colors.black87)
+                          : null,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(widget.creatorName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          Text(_getStoryTime(story['created_at']), style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11)),
+                          Text(widget.creatorName,
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                          Text(_getStoryTime(story['created_at']),
+                              style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11)),
                         ],
                       ),
                     ),
-                    IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 28), onPressed: () => Navigator.pop(context)),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   ],
                 ),
               ],
             ),
           ),
 
-          // 4. ZONE D'ACTION EN BAS (Like pour fan, Stats pour créateur)
+          // 4. ZONE D'ACTION EN BAS
           Positioned(
             bottom: 40, left: 16, right: 16,
             child: _isCreator
                 ? GestureDetector(
-                    onTap: _showInteractionsBottomSheet,
+                    onTap: () => _showInteractionsBottomSheet(isDark),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                       decoration: BoxDecoration(
@@ -348,7 +379,8 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
                         children: [
                           const Icon(Icons.visibility, color: Colors.white, size: 20),
                           const SizedBox(width: 8),
-                          Text('$_viewCount vues • $_likeCount J\'aime', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          Text('$_viewCount vues • $_likeCount J\'aime',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
@@ -363,6 +395,7 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
                           decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), shape: BoxShape.circle),
                           child: Icon(
                             _hasLiked ? Icons.favorite : Icons.favorite_border,
+                            // 🔴 Rouge conservé (convention universelle)
                             color: _hasLiked ? Colors.red : Colors.white,
                             size: 32,
                           ),
@@ -372,12 +405,11 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
                   ),
           ),
 
-          // 5. ✅ CORRECTION CRUCIALE : ZONES DE TAP (Gauche / Droite)
-          // On utilise 'bottom: 100' pour NE PAS recouvrir le bouton Like/Stats en bas de l'écran !
+          // 5. ZONES DE TAP
           Positioned(
             left: 0,
             top: 0,
-            bottom: 100, 
+            bottom: 100,
             width: MediaQuery.of(context).size.width / 2,
             child: GestureDetector(
               onTap: _goToPreviousStory,
@@ -388,7 +420,7 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
           Positioned(
             right: 0,
             top: 0,
-            bottom: 100, 
+            bottom: 100,
             width: MediaQuery.of(context).size.width / 2,
             child: GestureDetector(
               onTap: _goToNextStory,
@@ -401,25 +433,54 @@ class _ViewStoryScreenState extends State<ViewStoryScreen> {
     );
   }
 
-  Widget _buildStoryContent(String mediaType, String? mediaUrl, String? textContent, String? backgroundColor) {
+  Widget _buildStoryContent(String mediaType, String? mediaUrl, String? textContent, String? backgroundColor, Color accentColor) {
     if (mediaType == 'text' && textContent != null) {
       return Container(
-        color: backgroundColor != null ? Color(int.parse(backgroundColor.replaceAll('#', '0xFF'))) : const Color(0xFF8B5CF6),
+        // ✅ Plus de violet → noir en clair / blanc en sombre (par défaut)
+        color: backgroundColor != null
+            ? Color(int.parse(backgroundColor.replaceAll('#', '0xFF')))
+            : accentColor,
         padding: const EdgeInsets.all(32),
         child: Center(
-          child: Text(textContent, textAlign: TextAlign.center, style: TextStyle(color: _getTextColor(backgroundColor), fontSize: 26, fontWeight: FontWeight.bold, height: 1.4)),
+          child: Text(
+            textContent,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: _getTextColor(backgroundColor),
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              height: 1.4,
+            ),
+          ),
         ),
       );
     } else if (mediaType == 'video' && mediaUrl != null) {
       if (_videoController != null && _videoController!.value.isInitialized) {
-        return Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: VideoPlayer(_videoController!)));
+        return Center(
+          child: AspectRatio(
+            aspectRatio: _videoController!.value.aspectRatio,
+            child: VideoPlayer(_videoController!),
+          ),
+        );
       } else {
         return const Center(child: CircularProgressIndicator(color: Colors.white));
       }
     } else if (mediaType == 'image' && mediaUrl != null) {
-      return Image.network(mediaUrl, fit: BoxFit.cover, width: double.infinity, height: double.infinity, errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade900, child: const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 60))));
+      return Image.network(
+        mediaUrl,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, __, ___) => Container(
+          color: Colors.grey.shade900,
+          child: const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 60)),
+        ),
+      );
     } else {
-      return Container(color: Colors.grey.shade900, child: const Center(child: Icon(Icons.error_outline, color: Colors.white54, size: 60)));
+      return Container(
+        color: Colors.grey.shade900,
+        child: const Center(child: Icon(Icons.error_outline, color: Colors.white54, size: 60)),
+      );
     }
   }
 

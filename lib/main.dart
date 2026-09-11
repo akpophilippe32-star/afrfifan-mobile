@@ -4,27 +4,27 @@ import 'package:device_preview/device_preview.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/gestures.dart';
-import 'package:hive_flutter/hive_flutter.dart'; // ✅ 1. AJOUT DE L'IMPORT HIVE
+import 'package:hive_flutter/hive_flutter.dart';
 
 import 'theme/app_theme.dart';
 import 'screens/users/splash/splash_screen.dart';
-import 'screens/users/messages/voice_call_screen.dart'; 
+import 'screens/users/messages/voice_call_screen.dart';
 import 'screens/users/messages/incoming_call_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 RealtimeChannel? _callChannel;
 
+// ✅ Contrôleur global de thème
+// ThemeMode.system  → suit le téléphone
+// ThemeMode.dark    → sombre par défaut (adapte à ton design Afrifan)
+// ThemeMode.light   → clair par défaut
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
+
 Future<void> main() async {
-  // 2. Initialisation obligatoire de Flutter
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 3. Initialisation de Hive (Base de données locale ultra-rapide) ✅ NOUVEAU
   await Hive.initFlutter();
-
-  // 4. Chargement des variables d'environnement
   await dotenv.load(fileName: ".env");
 
-  // 5. Initialisation de Supabase
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL']!,
     anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
@@ -55,28 +55,23 @@ Future<void> main() async {
               value: currentUserId,
             ),
             callback: (payload) async {
-              print("📩 [MAIN DIAGNOSTIC] 🚨 ÉVÉNEMENT REÇU ! Données brutes : ${payload.newRecord}");
-              
               final newCall = payload.newRecord;
               final callerId = newCall['caller_id'];
               final status = newCall['status'];
-              
+
               if (callerId != currentUserId && status == 'ongoing') {
-                print("🔔 [MAIN DIAGNOSTIC] SUCCÈS ! Appel entrant détecté de : $callerId");
-                
                 String displayName = "Utilisateur inconnu";
                 String? displayAvatar;
 
                 try {
                   final response = await supabase
-                      .from('profiles') 
+                      .from('profiles')
                       .select('full_name, username, avatar_url')
                       .eq('id', callerId)
                       .single();
 
                   displayName = response['full_name'] ?? response['username'] ?? "Utilisateur";
                   displayAvatar = response['avatar_url'];
-                  print("✅ [MAIN DIAGNOSTIC] Infos appelant récupérées : $displayName");
                 } catch (e) {
                   print("⚠️ [MAIN DIAGNOSTIC] Erreur récupération nom appelant : $e");
                 }
@@ -91,19 +86,13 @@ Future<void> main() async {
                     ),
                   ),
                 );
-              } else {
-                print("⛔ [MAIN DIAGNOSTIC] Appel ignoré (propre appel ou statut != ongoing)");
               }
             },
           )
           .subscribe((status, error) {
-            print("📡 [MAIN DIAGNOSTIC] Statut souscription Realtime : $status");
             if (error != null) print("❌ [MAIN DIAGNOSTIC] Erreur Realtime : $error");
           });
-    } 
-    
-    else if (event == AuthChangeEvent.signedOut) {
-      print("🚪 [MAIN DIAGNOSTIC] Utilisateur déconnecté. Désactivation de l'écouteur.");
+    } else if (event == AuthChangeEvent.signedOut) {
       _callChannel?.unsubscribe();
     }
   });
@@ -116,35 +105,56 @@ Future<void> main() async {
   );
 }
 
-class AfrifanApp extends StatelessWidget {
+class AfrifanApp extends StatefulWidget {
   const AfrifanApp({super.key});
 
   @override
+  State<AfrifanApp> createState() => _AfrifanAppState();
+}
+
+class _AfrifanAppState extends State<AfrifanApp> {
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      title: 'Afrifan',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light.copyWith(
-        scrollbarTheme: ScrollbarThemeData(
-          thumbVisibility: WidgetStateProperty.all(true),
-          thickness: WidgetStateProperty.all(6.0),
-          radius: const Radius.circular(10),
-          thumbColor: WidgetStateProperty.all(
-            const Color(0xFF6366F1).withOpacity(0.5),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentThemeMode, child) {
+        return MaterialApp(
+          navigatorKey: navigatorKey,
+          title: 'Afrifan',
+          debugShowCheckedModeBanner: false,
+
+          theme: AppTheme.light.copyWith(
+            scrollbarTheme: ScrollbarThemeData(
+              thumbVisibility: WidgetStateProperty.all(true),
+              thickness: WidgetStateProperty.all(6.0),
+              radius: const Radius.circular(10),
+              thumbColor: WidgetStateProperty.all(const Color(0xFF6366F1).withOpacity(0.5)),
+            ),
           ),
-        ),
-      ),
-      scrollBehavior: const MaterialScrollBehavior().copyWith(
-        dragDevices: {
-          PointerDeviceKind.touch,
-          PointerDeviceKind.mouse,
-        },
-      ),
-      useInheritedMediaQuery: true,
-      locale: DevicePreview.locale(context),
-      builder: DevicePreview.appBuilder,
-      home: const SplashScreen(),
+
+          darkTheme: AppTheme.dark.copyWith(
+            scrollbarTheme: ScrollbarThemeData(
+              thumbVisibility: WidgetStateProperty.all(true),
+              thickness: WidgetStateProperty.all(6.0),
+              radius: const Radius.circular(10),
+              thumbColor: WidgetStateProperty.all(const Color(0xFF6366F1).withOpacity(0.5)),
+            ),
+          ),
+
+          themeMode: currentThemeMode,
+
+          scrollBehavior: const MaterialScrollBehavior().copyWith(
+            dragDevices: {
+              PointerDeviceKind.touch,
+              PointerDeviceKind.mouse,
+            },
+          ),
+          useInheritedMediaQuery: true,
+          locale: DevicePreview.locale(context),
+          builder: DevicePreview.appBuilder,
+          home: const SplashScreen(),
+        );
+      },
     );
   }
 }

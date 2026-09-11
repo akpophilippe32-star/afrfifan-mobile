@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 import '../creator/creator_profile_screen.dart';
 import '../../../widgets/tip_dialog.dart';
 import '../../../widgets/report_dialog.dart';
@@ -34,7 +34,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _loadInitialState() async {
-    // Récupérer le nom de l'utilisateur connecté
     final userProfile = await Supabase.instance.client
         .from('profiles')
         .select('username, full_name')
@@ -44,7 +43,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       _currentUserName = userProfile['full_name'] ?? userProfile['username'] ?? 'Utilisateur';
     }
 
-    // Vérifier si on a déjà liké
     if (_currentUserId.isNotEmpty) {
       final likeResponse = await Supabase.instance.client
           .from('post_likes')
@@ -58,7 +56,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         _commentsCount = widget.post['comments_count'] ?? 0;
       });
 
-      // Vérifier si on suit déjà le créateur
       final creatorId = widget.post['user_id']?.toString() ?? '';
       if (creatorId != _currentUserId) {
         final followResponse = await Supabase.instance.client
@@ -90,7 +87,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Future<void> _handleLike() async {
     if (_currentUserId.isEmpty) return;
     final postId = widget.post['id'].toString();
-    final creatorId = widget.post['user_id']?.toString() ?? '';
 
     try {
       if (_isLiked) {
@@ -124,14 +120,22 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  void _openComments() {
+  void _openComments(bool isDark) {
     final TextEditingController commentController = TextEditingController();
     final postId = widget.post['id'].toString();
+
+    final sheetBg = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final cardBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final inputBg = isDark ? Colors.black : Colors.white;
+    final border = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final accentColor = isDark ? Colors.white : Colors.black;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.black,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
         return StatefulBuilder(
@@ -141,26 +145,58 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               height: MediaQuery.of(context).size.height * 0.7,
               child: Column(
                 children: [
-                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(2))),
+                  Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                   const SizedBox(height: 20),
-                  const Text('Commentaires', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  Text('Commentaires',
+                      style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   Expanded(
                     child: FutureBuilder<List<Map<String, dynamic>>>(
                       future: Supabase.instance.client.from('comments').select().eq('post_id', postId).order('created_at', ascending: true),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                          return Center(child: CircularProgressIndicator(color: accentColor));
                         }
                         final comments = snapshot.data ?? [];
                         if (comments.isEmpty) {
-                          return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey), SizedBox(height: 16), Text('Aucun commentaire', style: TextStyle(color: Colors.grey, fontSize: 16))]));
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.chat_bubble_outline, size: 60,
+                                    color: isDark ? Colors.grey : Colors.grey.shade400),
+                                const SizedBox(height: 16),
+                                Text('Aucun commentaire',
+                                    style: TextStyle(color: subTextColor, fontSize: 16)),
+                              ],
+                            ),
+                          );
                         }
                         return ListView.builder(
                           itemCount: comments.length,
                           itemBuilder: (context, index) {
                             final comment = comments[index];
-                            return Container(margin: const EdgeInsets.only(bottom: 16), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(comment['user_name'] ?? 'Utilisateur', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)), const SizedBox(height: 6), Text(comment['content'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 14))]));
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(12)),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(comment['user_name'] ?? 'Utilisateur',
+                                      style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  const SizedBox(height: 6),
+                                  Text(comment['content'] ?? '',
+                                      style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14)),
+                                ],
+                              ),
+                            );
                           },
                         );
                       },
@@ -168,22 +204,46 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.grey.shade800)),
+                    decoration: BoxDecoration(
+                      color: inputBg,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: border),
+                    ),
                     child: Row(
                       children: [
-                        Expanded(child: TextField(controller: commentController, style: const TextStyle(color: Colors.white, fontSize: 14), decoration: const InputDecoration(hintText: 'Ajouter un commentaire...', hintStyle: TextStyle(color: Colors.white54), border: InputBorder.none, filled: true, fillColor: Colors.black))),
-                        IconButton(icon: const Icon(Icons.send, color: AppColors.primary), onPressed: () async {
-                          final content = commentController.text.trim();
-                          if (content.isEmpty) return;
-                          try {
-                            await Supabase.instance.client.from('comments').insert({'post_id': postId, 'user_id': _currentUserId, 'user_name': _currentUserName, 'content': content});
-                            _commentsCount++;
-                            await Supabase.instance.client.from('posts').update({'comments_count': _commentsCount}).eq('id', postId);
-                            commentController.clear();
-                            setModalState(() {});
-                            setState(() {});
-                          } catch (e) { debugPrint('❌ Erreur commentaire: $e'); }
-                        }),
+                        Expanded(
+                          child: TextField(
+                            controller: commentController,
+                            style: TextStyle(color: textColor, fontSize: 14),
+                            decoration: InputDecoration(
+                              hintText: 'Ajouter un commentaire...',
+                              hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black38),
+                              border: InputBorder.none,
+                              filled: true,
+                              fillColor: inputBg,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.send, color: accentColor),
+                          onPressed: () async {
+                            final content = commentController.text.trim();
+                            if (content.isEmpty) return;
+                            try {
+                              await Supabase.instance.client.from('comments').insert({
+                                'post_id': postId,
+                                'user_id': _currentUserId,
+                                'user_name': _currentUserName,
+                                'content': content,
+                              });
+                              _commentsCount++;
+                              await Supabase.instance.client.from('posts').update({'comments_count': _commentsCount}).eq('id', postId);
+                              commentController.clear();
+                              setModalState(() {});
+                              setState(() {});
+                            } catch (e) { debugPrint('❌ Erreur commentaire: $e'); }
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -198,6 +258,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
     final post = widget.post;
     final mediaUrl = post['media_url'];
     final creatorId = post['user_id']?.toString() ?? '';
@@ -205,89 +275,206 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final caption = post['content'] ?? '';
     final avatarUrl = post['profiles']?['avatar_url'];
 
+    // ✅ Accent : noir en clair / blanc en sombre
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 1. IMAGE DE FOND
-          if (mediaUrl != null && mediaUrl.toString().isNotEmpty)
-            Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54)))
-          else
-            Container(color: Colors.grey.shade900),
+      body: GestureDetector(
+        onDoubleTap: _handleDoubleTap,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. IMAGE DE FOND
+            if (mediaUrl != null && mediaUrl.toString().isNotEmpty)
+              Image.network(mediaUrl, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54)))
+            else
+              Container(color: Colors.grey.shade900),
 
-          // 2. DÉGRADÉ POUR LISIBILITÉ
-          DecoratedBox(
-            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black.withOpacity(0.6), Colors.transparent, Colors.black.withOpacity(0.9)])),
-          ),
-
-          // 3. ANIMATION CŒUR
-          if (_heartAnimation) const Center(child: Icon(Icons.favorite, color: Colors.redAccent, size: 120)),
-
-          // 4. BOUTON FERMER (HAUT GAUCHE)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            left: 16,
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white, size: 28)),
+            // 2. DÉGRADÉ POUR LISIBILITÉ (toujours sombre sur image)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.6),
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.9),
+                  ],
+                ),
+              ),
             ),
-          ),
 
-          // 5. BLOC GAUCHE BAS : CRÉATEUR + LÉGENDE COMPLÈTE
-          Positioned(
-            left: 16, right: 80, bottom: 20,
-            child: SingleChildScrollView( // Permet de scroller si la légende est très longue
+            // 3. ANIMATION CŒUR
+            if (_heartAnimation) const Center(child: Icon(Icons.favorite, color: Colors.redAccent, size: 120)),
+
+            // 4. BOUTON FERMER (HAUT GAUCHE)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 16,
+              left: 16,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 28),
+                ),
+              ),
+            ),
+
+            // 5. BLOC GAUCHE BAS : CRÉATEUR + LÉGENDE
+            Positioned(
+              left: 16, right: 80, bottom: 20,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => CreatorProfileScreen(creatorId: creatorId)));
+                      },
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 22,
+                            backgroundColor: Colors.grey.shade800,
+                            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                            child: avatarUrl == null ? const Icon(Icons.person, color: Colors.white) : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(creatorName,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                          if (creatorId != _currentUserId && !_isFollowed)
+                            GestureDetector(
+                              onTap: _handleFollow,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                decoration: BoxDecoration(
+                                  // ✅ Bouton adaptatif
+                                  color: accentColor,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text('Suivre',
+                                    style: TextStyle(
+                                      color: accentTextColor,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    )),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(caption.isEmpty ? '(Pas de légende)' : caption,
+                        style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.5)),
+                  ],
+                ),
+              ),
+            ),
+
+            // 6. BLOC DROITE BAS : BOUTONS D'ACTION
+            Positioned(
+              right: 12, bottom: 20,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   GestureDetector(
-                    onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => CreatorProfileScreen(creatorId: creatorId))); },
-                    child: Row(
-                      children: [
-                        CircleAvatar(radius: 22, backgroundColor: Colors.grey.shade800, backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null, child: avatarUrl == null ? const Icon(Icons.person, color: Colors.white) : null),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(creatorName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                        if (creatorId != _currentUserId && !_isFollowed)
-                          GestureDetector(onTap: _handleFollow, child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(20)), child: const Text('Suivre', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)))),
-                      ],
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => CreatorProfileScreen(creatorId: creatorId)));
+                    },
+                    child: CircleAvatar(
+                      radius: 26,
+                      backgroundColor: Colors.grey.shade800,
+                      backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                      child: avatarUrl == null ? const Icon(Icons.person, color: Colors.white, size: 26) : null,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  // LÉGENDE COMPLÈTE (SANS LIMITE DE LIGNES)
-                  Text(caption.isEmpty ? ' (Pas de légende)' : caption, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.5)),
+                  const SizedBox(height: 24),
+                  _buildSideButton(
+                    _isLiked ? Icons.favorite : Icons.favorite_border,
+                    '$_likesCount',
+                    _handleLike,
+                    iconColor: _isLiked ? Colors.redAccent : Colors.white,
+                  ),
+                  const SizedBox(height: 20),
+                  _buildSideButton(Icons.chat_bubble_rounded, '$_commentsCount', () => _openComments(isDark)),
+                  const SizedBox(height: 20),
+                  _buildSideButton(
+                    Icons.local_cafe,
+                    '',
+                    () => showDialog(context: context, builder: (context) => TipDialog(creatorId: creatorId, creatorName: creatorName)),
+                    iconColor: Colors.orangeAccent,
+                  ),
+                  const SizedBox(height: 20),
+                  _buildSideButton(Icons.share, '', () => Share.share('Regarde ce post de $creatorName sur Afrifan : $caption')),
+                  const SizedBox(height: 20),
+                  _buildSideButton(Icons.more_vert, '', () {
+                    final menuBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+                    final textColor = isDark ? Colors.white : Colors.black87;
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: menuBg,
+                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+                      builder: (context) => Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.flag_outlined, color: Colors.redAccent),
+                            title: Text('Signaler ce post', style: TextStyle(color: textColor)),
+                            onTap: () {
+                              Navigator.pop(context);
+                              showDialog(
+                                context: context,
+                                builder: (context) => ReportDialog(targetId: post['id'].toString(), targetType: 'post'),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
                 ],
               ),
             ),
-          ),
-
-          // 6. BLOC DROITE BAS : BOUTONS D'ACTION
-          Positioned(
-            right: 12, bottom: 20,
-            child: Column(
-              children: [
-                GestureDetector(onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => CreatorProfileScreen(creatorId: creatorId))); }, child: CircleAvatar(radius: 26, backgroundColor: Colors.grey.shade800, backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null, child: avatarUrl == null ? const Icon(Icons.person, color: Colors.white, size: 26) : null)),
-                const SizedBox(height: 24),
-                _buildSideButton(_isLiked ? Icons.favorite : Icons.favorite_border, '$_likesCount', _handleLike, iconColor: _isLiked ? Colors.redAccent : Colors.white),
-                const SizedBox(height: 20),
-                _buildSideButton(Icons.chat_bubble_rounded, '$_commentsCount', _openComments),
-                const SizedBox(height: 20),
-                _buildSideButton(Icons.local_cafe, '', () => showDialog(context: context, builder: (context) => TipDialog(creatorId: creatorId, creatorName: creatorName)), iconColor: Colors.orangeAccent),
-                const SizedBox(height: 20),
-                _buildSideButton(Icons.share, '', () => Share.share('Regarde ce post de $creatorName sur Afrifan : $caption')),
-                const SizedBox(height: 20),
-                _buildSideButton(Icons.more_vert, '', () {
-                  showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))), builder: (context) => Column(mainAxisSize: MainAxisSize.min, children: [ListTile(leading: const Icon(Icons.flag_outlined, color: Colors.redAccent), title: const Text('Signaler ce post', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); showDialog(context: context, builder: (context) => ReportDialog(targetId: post['id'].toString(), targetType: 'post')); })]));
-                }),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSideButton(IconData icon, String label, VoidCallback onTap, {Color iconColor = Colors.white}) {
-    return GestureDetector(onTap: onTap, child: Padding(padding: const EdgeInsets.all(4.0), child: Column(children: [Icon(icon, color: iconColor, size: 34), if (label.isNotEmpty) ...[const SizedBox(height: 4), Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold))]])));
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: Column(
+          children: [
+            Icon(icon, color: iconColor, size: 34),
+            if (label.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(0, 1))],
+                  )),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

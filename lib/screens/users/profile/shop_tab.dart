@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'create_product_screen.dart'; // Assure-toi que ce fichier existe (créé précédemment)
+import '../../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
+import 'create_product_screen.dart';
 
 class CreatorShopTab extends StatefulWidget {
   const CreatorShopTab({super.key});
@@ -22,7 +23,7 @@ class _CreatorShopTabState extends State<CreatorShopTab> {
   Future<void> _loadProducts() async {
     setState(() => _isLoading = true);
     final userId = Supabase.instance.client.auth.currentUser?.id;
-    
+
     if (userId == null) return;
 
     try {
@@ -50,8 +51,23 @@ class _CreatorShopTabState extends State<CreatorShopTab> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+      return Center(child: CircularProgressIndicator(color: accentColor));
     }
 
     if (_products.isEmpty) {
@@ -64,21 +80,22 @@ class _CreatorShopTabState extends State<CreatorShopTab> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                  // ✅ Fond neutre au lieu de violet
+                  color: accentColor.withOpacity(0.08),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.store, color: Color(0xFF8B5CF6), size: 48),
+                child: Icon(Icons.store, color: accentColor, size: 48),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Votre boutique est vide',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Commencez à vendre vos créations numériques dès maintenant.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 14),
+                style: TextStyle(color: subTextColor, fontSize: 14),
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
@@ -89,11 +106,15 @@ class _CreatorShopTabState extends State<CreatorShopTab> {
                   );
                   if (result == true) _loadProducts();
                 },
-                icon: const Icon(Icons.add, size: 20),
-                label: const Text('Ajouter mon premier produit', style: TextStyle(fontWeight: FontWeight.bold)),
+                icon: Icon(Icons.add, size: 20, color: accentTextColor),
+                label: Text(
+                  'Ajouter mon premier produit',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: accentTextColor),
+                ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8B5CF6),
-                  foregroundColor: Colors.white,
+                  // ✅ Bouton : noir en clair / blanc en sombre
+                  backgroundColor: accentColor,
+                  foregroundColor: accentTextColor,
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 ),
@@ -117,10 +138,10 @@ class _CreatorShopTabState extends State<CreatorShopTab> {
           itemCount: _products.length,
           itemBuilder: (context, index) {
             final product = _products[index];
-            return _buildProductCard(product);
+            return _buildProductCard(product, isDark);
           },
         ),
-        // Bouton flottant pour ajouter rapidement
+        // Bouton flottant
         Positioned(
           bottom: 24,
           right: 24,
@@ -132,26 +153,41 @@ class _CreatorShopTabState extends State<CreatorShopTab> {
               );
               if (result == true) _loadProducts();
             },
-            backgroundColor: const Color(0xFF8B5CF6),
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text('Nouveau', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            // ✅ FAB : noir en clair / blanc en sombre
+            backgroundColor: accentColor,
+            icon: Icon(Icons.add, color: accentTextColor),
+            label: Text(
+              'Nouveau',
+              style: TextStyle(color: accentTextColor, fontWeight: FontWeight.bold),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildProductCard(Map<String, dynamic> product) {
+  Widget _buildProductCard(Map<String, dynamic> product, bool isDark) {
     final title = product['title'] as String? ?? 'Sans titre';
     final price = (product['price'] as num?)?.toDouble() ?? 0;
     final mediaType = product['media_type'] as String? ?? 'file';
     final status = product['status'] as String? ?? 'draft';
 
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black45;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final mediaBg = isDark ? Colors.grey.shade900 : Colors.grey.shade200;
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: status == 'published' ? const Color(0xFF2A2A2A) : Colors.orange.withOpacity(0.5)),
+        border: Border.all(
+          color: status == 'published'
+              ? borderColor
+              : Colors.orange.withOpacity(0.5),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,12 +197,15 @@ class _CreatorShopTabState extends State<CreatorShopTab> {
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               child: Container(
-                color: Colors.grey.shade900,
+                color: mediaBg,
                 child: Center(
                   child: Icon(
-                    mediaType == 'video' ? Icons.video_library : 
-                    mediaType == 'image' ? Icons.image : Icons.insert_drive_file,
-                    color: Colors.grey,
+                    mediaType == 'video'
+                        ? Icons.video_library
+                        : mediaType == 'image'
+                            ? Icons.image
+                            : Icons.insert_drive_file,
+                    color: subTextColor,
                     size: 40,
                   ),
                 ),
@@ -185,7 +224,11 @@ class _CreatorShopTabState extends State<CreatorShopTab> {
                       Expanded(
                         child: Text(
                           title,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          style: TextStyle(
+                            color: textColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -193,15 +236,30 @@ class _CreatorShopTabState extends State<CreatorShopTab> {
                       if (status == 'draft')
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(8)),
-                          child: const Text('Brouillon', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Brouillon',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                     ],
                   ),
                   const Spacer(),
                   Text(
                     _formatPrice(price),
-                    style: const TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(
+                      // ✅ Prix : noir en clair / blanc en sombre
+                      color: accentColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ],
               ),

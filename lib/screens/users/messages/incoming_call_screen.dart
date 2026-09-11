@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 import 'voice_call_screen.dart';
 
 class IncomingCallScreen extends StatefulWidget {
@@ -26,7 +27,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
   Future<void> _answerCall() async {
     if (_isAnswering) return;
     setState(() => _isAnswering = true);
-    
+
     print("📞 [IncomingCall] UTILISATEUR A DÉCROCHÉ ! Call ID: ${widget.callId}");
 
     if (mounted) {
@@ -48,7 +49,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
 
   Future<void> _declineCall() async {
     print("📞 [IncomingCall] Utilisateur a refusé l'appel.");
-    
+
     try {
       await Supabase.instance.client
           .from('calls')
@@ -64,8 +65,23 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final avatarBg = isDark ? const Color(0xFF1C1C1F) : const Color(0xFFE5E7EB);
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       body: SafeArea(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -75,16 +91,30 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Appel vocal entrant...", style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  Text(
+                    "Appel vocal entrant...",
+                    style: TextStyle(color: subTextColor, fontSize: 16),
+                  ),
                   const SizedBox(height: 24),
                   CircleAvatar(
                     radius: 60,
-                    backgroundColor: const Color(0xFF1C1C1F),
-                    backgroundImage: widget.callerAvatar != null ? NetworkImage(widget.callerAvatar!) : null,
-                    child: widget.callerAvatar == null ? const Icon(Icons.person, color: Colors.white, size: 60) : null,
+                    backgroundColor: avatarBg,
+                    backgroundImage: widget.callerAvatar != null
+                        ? NetworkImage(widget.callerAvatar!)
+                        : null,
+                    child: widget.callerAvatar == null
+                        ? Icon(Icons.person, color: textColor, size: 60)
+                        : null,
                   ),
                   const SizedBox(height: 24),
-                  Text(widget.callerName, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                  Text(
+                    widget.callerName,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -93,27 +123,49 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
+                  // ❌ REFUSER (reste ROUGE — convention universelle)
                   GestureDetector(
                     onTap: _declineCall,
                     child: Column(
                       children: [
-                        Container(width: 72, height: 72, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), child: const Icon(Icons.call_end, color: Colors.white, size: 36)),
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.call_end, color: Colors.white, size: 36),
+                        ),
                         const SizedBox(height: 12),
-                        const Text("Refuser", style: TextStyle(color: Colors.white, fontSize: 14)),
+                        Text(
+                          "Refuser",
+                          style: TextStyle(color: textColor, fontSize: 14),
+                        ),
                       ],
                     ),
                   ),
+                  // ✅ DÉCROCHER (reste VERT — convention universelle)
                   GestureDetector(
                     onTap: _answerCall,
                     child: Column(
                       children: [
                         Container(
-                          width: 72, height: 72,
-                          decoration: const BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle),
-                          child: _isAnswering ? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.call, color: Colors.white, size: 36),
+                          width: 72,
+                          height: 72,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF22C55E),
+                            shape: BoxShape.circle,
+                          ),
+                          child: _isAnswering
+                              ? const CircularProgressIndicator(color: Colors.white)
+                              : const Icon(Icons.call, color: Colors.white, size: 36),
                         ),
                         const SizedBox(height: 12),
-                        const Text("Décrocher", style: TextStyle(color: Colors.white, fontSize: 14)),
+                        Text(
+                          "Décrocher",
+                          style: TextStyle(color: textColor, fontSize: 14),
+                        ),
                       ],
                     ),
                   ),

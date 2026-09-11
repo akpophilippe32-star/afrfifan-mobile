@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/messaging_service.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 import '../../../widgets/report_dialog.dart';
 import 'chat_screen.dart';
 import '../explore/trending_creators_screen.dart';
@@ -53,10 +54,7 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
   bool get wantKeepAlive => true;
 
   Future<void> _loadConversations() async {
-    if (_hasLoadedOnce) {
-      debugPrint('⏭️ Messages déjà en mémoire, pas de rechargement');
-      return;
-    }
+    if (_hasLoadedOnce) return;
 
     setState(() {
       _isLoading = true;
@@ -171,21 +169,25 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
     _loadConversations();
   }
 
-  Future<void> _deleteConversation(Map<String, dynamic> conversation) async {
+  Future<void> _deleteConversation(Map<String, dynamic> conversation, bool isDark) async {
+    final dialogBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Supprimer la conversation ?', style: TextStyle(color: Colors.white)),
-        content: const Text('Cette action est irréversible et supprimera tous les messages.', style: TextStyle(color: Colors.grey)),
+        backgroundColor: dialogBg,
+        title: Text('Supprimer la conversation ?', style: TextStyle(color: textColor)),
+        content: Text('Cette action est irréversible et supprimera tous les messages.',
+            style: TextStyle(color: isDark ? Colors.grey : Colors.black54)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annuler', style: TextStyle(color: Colors.grey))
+            child: Text('Annuler', style: TextStyle(color: isDark ? Colors.grey : Colors.black54)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Supprimer', style: TextStyle(color: Colors.redAccent))
+            child: const Text('Supprimer', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -203,24 +205,28 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
           const SnackBar(
             content: Text('Conversation supprimée'),
             backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
     }
   }
 
-  void _showOptions(Map<String, dynamic> conversation) {
+  void _showOptions(Map<String, dynamic> conversation, bool isDark) {
     final convId = conversation['id'] as String;
     final creatorId = conversation['other_user_id'] as String;
     final isPinned = _pinnedIds.contains(convId);
     final isMuted = _mutedIds.contains(convId);
 
+    final sheetBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final handleColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => Column(
         mainAxisSize: MainAxisSize.min,
@@ -230,31 +236,31 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade700,
-              borderRadius: BorderRadius.circular(2)
+              color: handleColor,
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
           ListTile(
-            leading: const Icon(Icons.person, color: Colors.white),
-            title: const Text('Voir le profil', style: TextStyle(color: Colors.white)),
+            leading: Icon(Icons.person, color: textColor),
+            title: Text('Voir le profil', style: TextStyle(color: textColor)),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => CreatorProfileScreen(creatorId: creatorId)
-                )
+                  builder: (context) => CreatorProfileScreen(creatorId: creatorId),
+                ),
               );
             },
           ),
           ListTile(
             leading: Icon(
               isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-              color: AppColors.primary
+              color: AppColors.primary,
             ),
             title: Text(
               isPinned ? 'Désépingler' : 'Épingler',
-              style: const TextStyle(color: Colors.white)
+              style: TextStyle(color: textColor),
             ),
             onTap: () {
               setState(() {
@@ -266,11 +272,11 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
           ListTile(
             leading: Icon(
               isMuted ? Icons.notifications_off : Icons.notifications,
-              color: Colors.orangeAccent
+              color: Colors.orangeAccent,
             ),
             title: Text(
               isMuted ? 'Réactiver les notifications' : 'Mettre en sourdine',
-              style: const TextStyle(color: Colors.white)
+              style: TextStyle(color: textColor),
             ),
             onTap: () {
               setState(() {
@@ -288,8 +294,8 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Utilisateur bloqué'),
-                  backgroundColor: Colors.redAccent
-                )
+                  backgroundColor: Colors.redAccent,
+                ),
               );
             },
           ),
@@ -302,21 +308,21 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                 context: context,
                 builder: (context) => ReportDialog(
                   targetId: creatorId,
-                  targetType: 'user'
-                )
+                  targetType: 'user',
+                ),
               );
             },
           ),
-          const Divider(color: Colors.grey),
+          Divider(color: isDark ? Colors.grey : Colors.grey.shade300),
           ListTile(
             leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
             title: const Text(
               'Supprimer la conversation',
-              style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)
+              style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
             ),
             onTap: () {
               Navigator.pop(context);
-              _deleteConversation(conversation);
+              _deleteConversation(conversation, isDark);
             },
           ),
           const SizedBox(height: 20),
@@ -331,45 +337,58 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
   Widget build(BuildContext context) {
     super.build(context);
 
+    // ✅ ÉCOUTE DU THÈME
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bgColor,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Messages',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.bold
-          )
+          style: TextStyle(color: textColor, fontSize: 22, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white70),
+            icon: Icon(Icons.refresh, color: isDark ? Colors.white70 : Colors.black54),
             onPressed: () {
               _hasLoadedOnce = false;
               _loadConversations();
-            }
+            },
           ),
           IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.white70),
-            onPressed: _openMessagingSettings
+            icon: Icon(Icons.settings_outlined, color: isDark ? Colors.white70 : Colors.black54),
+            onPressed: () => _openMessagingSettings(isDark),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppColors.primary,
+            floatingActionButton: FloatingActionButton(
+        // ✅ Le FAB s'adapte au thème (blanc en sombre, noir en clair)
+        backgroundColor: isDark ? Colors.white : Colors.black,
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const TrendingCreatorsScreen()
-            )
+            MaterialPageRoute(builder: (context) => const TrendingCreatorsScreen()),
           );
         },
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
+        child: Icon(
+          Icons.add,
+          color: isDark ? Colors.black : Colors.white, // ✅ Icône inversée pour contraste
+          size: 28,
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
@@ -380,7 +399,8 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                     children: [
                       const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
                       const SizedBox(height: 16),
-                      const Text('Erreur de chargement', style: TextStyle(color: Colors.white, fontSize: 18)),
+                      Text('Erreur de chargement',
+                          style: TextStyle(color: textColor, fontSize: 18)),
                       const SizedBox(height: 8),
                       ElevatedButton(
                         onPressed: () {
@@ -389,7 +409,7 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                         },
                         style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
                         child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
-                      )
+                      ),
                     ],
                   ),
                 )
@@ -399,24 +419,23 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                     _hasLoadedOnce = false;
                     await _loadConversations();
                   },
-                  // ✅ SOLUTION : Utiliser un CustomScrollView avec SliverList
                   child: CustomScrollView(
                     slivers: [
                       SliverToBoxAdapter(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildSearchBar(),
+                            _buildSearchBar(isDark),
                             if (_conversations.isEmpty)
-                              _buildEmptyState()
+                              _buildEmptyState(isDark)
                             else ...[
                               if (_topRecents.isNotEmpty) ...[
-                                _buildSectionTitle('RÉCENTS'),
-                                _buildTopRow()
+                                _buildSectionTitle('RÉCENTS', textColor),
+                                _buildTopRow(isDark),
                               ],
                               if (_requestsCount > 0 && _allowFanRequests)
-                                _buildRequestsCard(),
-                              _buildSectionTitle('TOUTES LES CONVERSATIONS'),
+                                _buildRequestsCard(isDark),
+                              _buildSectionTitle('TOUTES LES CONVERSATIONS', textColor),
                             ],
                           ],
                         ),
@@ -431,13 +450,17 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                                   child: Center(
                                     child: Column(
                                       children: [
-                                        const Icon(Icons.search_off, color: Colors.grey, size: 48),
+                                        Icon(Icons.search_off,
+                                            color: isDark ? Colors.grey : Colors.black38,
+                                            size: 48),
                                         const SizedBox(height: 12),
                                         Text(
                                           'Aucun résultat pour « $_searchQuery »',
                                           style: TextStyle(
-                                            color: Colors.grey.shade500,
-                                            fontSize: 16
+                                            color: isDark
+                                                ? Colors.grey.shade500
+                                                : Colors.black54,
+                                            fontSize: 16,
                                           ),
                                         ),
                                       ],
@@ -446,13 +469,13 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                                 );
                               }
                               final c = _sorted[index];
-                              return _buildConversationTile(c);
+                              return _buildConversationTile(c, isDark);
                             },
                             childCount: _sorted.isEmpty ? 1 : _sorted.length,
                           ),
                         ),
                       SliverToBoxAdapter(
-                        child: _buildEndFooter(),
+                        child: _buildEndFooter(isDark),
                       ),
                     ],
                   ),
@@ -462,26 +485,32 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
 
   // ─────────────────────────── WIDGETS ───────────────────────────
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(bool isDark) {
+    final fieldBg = isDark ? const Color(0xFF0A0A0A) : const Color(0xFFF3F4F6);
+    final border = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF0A0A0A),
+          color: fieldBg,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade800),
+          border: Border.all(color: border),
         ),
         child: TextField(
           controller: _searchController,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: textColor),
           onChanged: (v) => setState(() => _searchQuery = v),
           decoration: InputDecoration(
             hintText: 'Rechercher des messages...',
-            hintStyle: const TextStyle(color: Colors.white38),
-            prefixIcon: const Icon(Icons.search, color: Colors.white54),
+            hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+            prefixIcon: Icon(Icons.search,
+                color: isDark ? Colors.white54 : Colors.black45),
             suffixIcon: _searchQuery.isNotEmpty
                 ? IconButton(
-                    icon: const Icon(Icons.clear, color: Colors.white54),
+                    icon: Icon(Icons.clear,
+                        color: isDark ? Colors.white54 : Colors.black45),
                     onPressed: () {
                       _searchController.clear();
                       setState(() => _searchQuery = '');
@@ -498,22 +527,22 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
     );
   }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildSectionTitle(String title, Color textColor) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
       child: Text(
         title,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: textColor,
           fontSize: 15,
           fontWeight: FontWeight.bold,
-          letterSpacing: 1
-        )
-      )
+          letterSpacing: 1,
+        ),
+      ),
     );
   }
 
-  Widget _buildTopRow() {
+  Widget _buildTopRow(bool isDark) {
     return SizedBox(
       height: 110,
       child: ListView.separated(
@@ -521,16 +550,17 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: _topRecents.length,
         separatorBuilder: (_, __) => const SizedBox(width: 16),
-        itemBuilder: (context, i) => _buildTopAvatar(_topRecents[i]),
+        itemBuilder: (context, i) => _buildTopAvatar(_topRecents[i], isDark),
       ),
     );
   }
 
-  Widget _buildTopAvatar(Map<String, dynamic> c) {
+  Widget _buildTopAvatar(Map<String, dynamic> c, bool isDark) {
     final username = _nameOf(c);
     final avatarUrl = _avatarOf(c);
     final unread = _asInt(c['unread_count']);
     final status = _statusOf(c);
+    final textColor = isDark ? Colors.white : Colors.black87;
 
     return GestureDetector(
       onTap: () => _openChat(c),
@@ -549,26 +579,22 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                         ? const LinearGradient(
                             colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
                             begin: Alignment.topLeft,
-                            end: Alignment.bottomRight
+                            end: Alignment.bottomRight,
                           )
                         : null,
-                    color: unread > 0 ? null : Colors.grey.shade800,
+                    color: unread > 0 ? null : (isDark ? Colors.grey.shade800 : Colors.grey.shade300),
                   ),
                   child: CircleAvatar(
                     radius: 32,
-                    backgroundColor: Colors.black,
+                    backgroundColor: isDark ? Colors.black : Colors.white,
                     backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
                     child: avatarUrl == null
-                        ? const Icon(Icons.person, color: Colors.white, size: 30)
-                        : null
+                        ? Icon(Icons.person, color: textColor, size: 30)
+                        : null,
                   ),
                 ),
                 if (unread > 0)
-                  Positioned(
-                    top: -2,
-                    right: -2,
-                    child: _unreadBadge(unread)
-                  ),
+                  Positioned(top: -2, right: -2, child: _unreadBadge(unread, isDark)),
                 Positioned(
                   bottom: 2,
                   right: 2,
@@ -578,7 +604,10 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                     decoration: BoxDecoration(
                       color: _showOnlineStatus ? _statusColor(status) : Colors.grey,
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.black, width: 2)
+                      border: Border.all(
+                        color: isDark ? Colors.black : Colors.white,
+                        width: 2,
+                      ),
                     ),
                   ),
                 ),
@@ -589,7 +618,7 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
               username,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontSize: 13)
+              style: TextStyle(color: textColor, fontSize: 13),
             ),
           ],
         ),
@@ -597,36 +626,43 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
     );
   }
 
-  Widget _unreadBadge(int count) {
+  Widget _unreadBadge(int count, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(4),
       constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
       decoration: BoxDecoration(
         color: AppColors.primary,
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.black, width: 2)
+        border: Border.all(
+          color: isDark ? Colors.black : Colors.white,
+          width: 2,
+        ),
       ),
       child: Text(
         count > 99 ? '99+' : '$count',
         style: const TextStyle(
           color: Colors.white,
           fontSize: 10,
-          fontWeight: FontWeight.bold
+          fontWeight: FontWeight.bold,
         ),
-        textAlign: TextAlign.center
+        textAlign: TextAlign.center,
       ),
     );
   }
 
-  Widget _buildRequestsCard() {
+  Widget _buildRequestsCard(bool isDark) {
+    final cardBg = isDark ? const Color(0xFF141417) : const Color(0xFFF3F4F6);
+    final border = isDark ? Colors.grey.shade900 : Colors.grey.shade300;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF141417),
+          color: cardBg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade900)
+          border: Border.all(color: border),
         ),
         child: Row(
           children: [
@@ -635,30 +671,30 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
               height: 46,
               decoration: BoxDecoration(
                 color: AppColors.primary.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(14)
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(Icons.person_add_alt_1, color: AppColors.primary)
+              child: Icon(Icons.person_add_alt_1, color: AppColors.primary),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Demandes de messages',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: textColor,
                       fontSize: 15,
-                      fontWeight: FontWeight.bold
-                    )
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     '$_requestsCount nouvelles demandes',
                     style: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontSize: 13
-                    )
+                      color: isDark ? Colors.grey.shade500 : Colors.black54,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
@@ -666,18 +702,13 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24)
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10)
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               ),
-              onPressed: () { /* TODO: Ouvrir écran des demandes */ },
+              onPressed: () {},
               child: const Text(
                 'Voir',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600
-                )
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -686,19 +717,18 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
     );
   }
 
-  // ✅ Conversation Tile avec clé UNIQUE
-  Widget _buildConversationTile(Map<String, dynamic> c) {
+  Widget _buildConversationTile(Map<String, dynamic> c, bool isDark) {
     return Container(
-      key: ValueKey('conv_${c['id']}'), // ✅ Clé UNIQUE et STABLE
+      key: ValueKey('conv_${c['id']}'),
       child: InkWell(
         onTap: () => _openChat(c),
-        onLongPress: () => _showOptions(c),
-        child: _buildRecentTile(c),
+        onLongPress: () => _showOptions(c, isDark),
+        child: _buildRecentTile(c, isDark),
       ),
     );
   }
 
-  Widget _buildRecentTile(Map<String, dynamic> c) {
+  Widget _buildRecentTile(Map<String, dynamic> c, bool isDark) {
     final username = _nameOf(c);
     final avatarUrl = _avatarOf(c);
     final lastMessage = c['last_message']?.toString() ?? '';
@@ -712,10 +742,14 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
     final isPinned = _pinnedIds.contains(c['id']);
     final isMuted = _mutedIds.contains(c['id']);
 
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey.shade500 : Colors.black54;
+
     String formattedLastMessage = lastMessage;
     if (lastMessageType == 'voice') {
       final duration = lastMessageDuration ?? 0;
-      formattedLastMessage = '🎤 Message vocal • ${(duration ~/ 60).toString().padLeft(2, '0')}:${(duration % 60).toString().padLeft(2, '0')}';
+      formattedLastMessage =
+          '🎤 Message vocal • ${(duration ~/ 60).toString().padLeft(2, '0')}:${(duration % 60).toString().padLeft(2, '0')}';
     } else if (lastMessageType == 'call_log') {
       formattedLastMessage = '📞 Appel vocal';
     }
@@ -729,11 +763,11 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
             children: [
               CircleAvatar(
                 radius: 26,
-                backgroundColor: Colors.grey.shade800,
+                backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
                 backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
                 child: avatarUrl == null
-                    ? const Icon(Icons.person, color: Colors.white, size: 26)
-                    : null
+                    ? Icon(Icons.person, color: textColor, size: 26)
+                    : null,
               ),
               Positioned(
                 bottom: 0,
@@ -744,7 +778,10 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                   decoration: BoxDecoration(
                     color: _showOnlineStatus ? _statusColor(status) : Colors.grey,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.black, width: 2)
+                    border: Border.all(
+                      color: isDark ? Colors.black : Colors.white,
+                      width: 2,
+                    ),
                   ),
                 ),
               ),
@@ -756,9 +793,9 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                     padding: const EdgeInsets.all(3),
                     decoration: const BoxDecoration(
                       color: AppColors.primary,
-                      shape: BoxShape.circle
+                      shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.push_pin, color: Colors.white, size: 12)
+                    child: const Icon(Icons.push_pin, color: Colors.white, size: 12),
                   ),
                 ),
             ],
@@ -776,10 +813,10 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: textColor,
                           fontSize: 16,
-                          fontWeight: unread > 0 ? FontWeight.bold : FontWeight.w600
-                        )
+                          fontWeight: unread > 0 ? FontWeight.bold : FontWeight.w600,
+                        ),
                       ),
                     ),
                     if (isPinned)
@@ -792,7 +829,7 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: const Color(0xFF3A2E0F),
-                          borderRadius: BorderRadius.circular(6)
+                          borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
                           'PREMIUM',
@@ -800,8 +837,8 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                             color: Color(0xFFF5B60F),
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5
-                          )
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
                   ],
@@ -812,8 +849,8 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: unread > 0 ? Colors.white70 : Colors.grey.shade500,
-                    fontSize: 14
+                    color: unread > 0 ? textColor : subTextColor,
+                    fontSize: 14,
                   ),
                 ),
               ],
@@ -832,15 +869,15 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                   Text(
                     _formatTimeAgo(lastMessageTime),
                     style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 12
-                    )
+                      color: isDark ? Colors.grey.shade600 : Colors.black45,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
               if (unread > 0) ...[
                 const SizedBox(height: 6),
-                _unreadBadge(unread)
+                _unreadBadge(unread, isDark),
               ],
             ],
           ),
@@ -849,53 +886,68 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
     );
   }
 
-  Widget _buildEndFooter() {
+  Widget _buildEndFooter(bool isDark) {
+    final color = isDark ? Colors.grey.shade800 : Colors.grey.shade400;
     return Padding(
       padding: const EdgeInsets.only(top: 40, bottom: 20),
       child: Column(
         children: [
-          Icon(Icons.chat_bubble_outline, color: Colors.grey.shade800, size: 34),
+          Icon(Icons.chat_bubble_outline, color: color, size: 34),
           const SizedBox(height: 8),
           Text(
             'Vous avez atteint la fin',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 14)
-          )
-        ]
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 80),
-      child: Column(
-        children: [
-          Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey.shade700),
-          const SizedBox(height: 16),
-          const Text(
-            'Aucune conversation',
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold
-            )
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Suivez un créateur pour commencer à discuter',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 14)
+              color: isDark ? Colors.grey.shade600 : Colors.black45,
+              fontSize: 14,
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _openMessagingSettings() {
+  Widget _buildEmptyState(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 80),
+      child: Column(
+        children: [
+          Icon(
+            Icons.chat_bubble_outline,
+            size: 80,
+            color: isDark ? Colors.grey.shade700 : Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Aucune conversation',
+            style: TextStyle(
+              color: isDark ? Colors.white : Colors.black87,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Suivez un créateur pour commencer à discuter',
+            style: TextStyle(
+              color: isDark ? Colors.grey.shade500 : Colors.black54,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openMessagingSettings(bool isDark) {
+    final sheetBg = isDark ? const Color(0xFF141417) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final handleColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF141417),
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24))
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => StatefulBuilder(
         builder: (context, setSheetState) {
@@ -911,8 +963,8 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade700,
-                        borderRadius: BorderRadius.circular(2)
+                        color: handleColor,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
@@ -923,15 +975,15 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                       children: [
                         Icon(Icons.settings_outlined, color: AppColors.primary),
                         const SizedBox(width: 8),
-                        const Text(
+                        Text(
                           'Paramètres de messagerie',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: textColor,
                             fontSize: 17,
-                            fontWeight: FontWeight.bold
-                          )
-                        )
-                      ]
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -940,40 +992,44 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
                     title: 'Notifications',
                     subtitle: 'Recevoir une notification à chaque message',
                     value: _notifEnabled,
+                    isDark: isDark,
                     onChanged: (v) {
                       setState(() => _notifEnabled = v);
                       setSheetState(() {});
-                    }
+                    },
                   ),
                   _settingsSwitch(
                     icon: Icons.done_all,
                     title: 'Accusés de lecture',
                     subtitle: 'Les autres voient quand tu as lu leurs messages',
                     value: _readReceipts,
+                    isDark: isDark,
                     onChanged: (v) {
                       setState(() => _readReceipts = v);
                       setSheetState(() {});
-                    }
+                    },
                   ),
                   _settingsSwitch(
                     icon: Icons.wifi_tethering,
                     title: 'Statut en ligne',
                     subtitle: 'Afficher ton statut et celui des autres',
                     value: _showOnlineStatus,
+                    isDark: isDark,
                     onChanged: (v) {
                       setState(() => _showOnlineStatus = v);
                       setSheetState(() {});
-                    }
+                    },
                   ),
                   _settingsSwitch(
                     icon: Icons.person_add_alt_1,
                     title: 'Demandes des fans',
                     subtitle: 'Autoriser les messages des non-abonnés',
                     value: _allowFanRequests,
+                    isDark: isDark,
                     onChanged: (v) {
                       setState(() => _allowFanRequests = v);
                       setSheetState(() {});
-                    }
+                    },
                   ),
                   const SizedBox(height: 8),
                 ],
@@ -990,16 +1046,27 @@ class _MessagesScreenState extends State<MessagesScreen> with AutomaticKeepAlive
     required String title,
     required String subtitle,
     required bool value,
-    required ValueChanged<bool> onChanged
+    required bool isDark,
+    required ValueChanged<bool> onChanged,
   }) {
+    final textColor = isDark ? Colors.white : Colors.black87;
     return SwitchListTile(
       activeColor: AppColors.primary,
       secondary: Padding(
         padding: const EdgeInsets.only(left: 20),
-        child: Icon(icon, color: AppColors.primary)
+        child: Icon(icon, color: AppColors.primary),
       ),
-      title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-      subtitle: Text(subtitle, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+      title: Text(
+        title,
+        style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          color: isDark ? Colors.grey.shade500 : Colors.black54,
+          fontSize: 12,
+        ),
+      ),
       value: value,
       onChanged: onChanged,
     );

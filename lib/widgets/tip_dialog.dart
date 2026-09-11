@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/dashboard_service.dart'; // Ajuste le chemin si besoin
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
+import '../services/dashboard_service.dart';
 
 class TipDialog extends StatefulWidget {
   final String creatorId;
@@ -18,19 +19,17 @@ class TipDialog extends StatefulWidget {
 
 class _TipDialogState extends State<TipDialog> {
   final DashboardService _dashboardService = DashboardService();
-  
+
   final _amountController = TextEditingController();
   final _phoneController = TextEditingController();
   final _messageController = TextEditingController();
-  
+
   double _selectedAmount = 0;
   bool _isLoading = false;
-  
-  // Moyens de paiement Mobile Money
+
   String _selectedPaymentMethod = 'Orange Money';
   final List<String> _paymentMethods = ['Orange Money', 'MTN Mobile Money', 'Moov Money'];
-  
-  // Suggestions de montants
+
   final List<double> _quickAmounts = [500, 1000, 2000, 5000];
 
   @override
@@ -56,7 +55,6 @@ class _TipDialogState extends State<TipDialog> {
   }
 
   Future<void> _sendTip() async {
-    // 1. Validations
     if (_selectedAmount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Veuillez entrer un montant valide'), backgroundColor: Colors.red),
@@ -71,14 +69,13 @@ class _TipDialogState extends State<TipDialog> {
     }
 
     setState(() => _isLoading = true);
-    
+
     final fanId = Supabase.instance.client.auth.currentUser?.id;
     if (fanId == null) {
       setState(() => _isLoading = false);
       return;
     }
 
-    // 2. Appel au service backend
     final success = await _dashboardService.sendTip(
       fanId: fanId,
       fanPhoneNumber: _phoneController.text.trim(),
@@ -88,7 +85,6 @@ class _TipDialogState extends State<TipDialog> {
       message: _messageController.text.trim().isEmpty ? null : _messageController.text.trim(),
     );
 
-    // 3. Gestion du résultat
     if (mounted) {
       setState(() => _isLoading = false);
       if (success) {
@@ -110,54 +106,74 @@ class _TipDialogState extends State<TipDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // Le bouton est actif si le montant > 0 et le téléphone n'est pas vide
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildDialog(isDark);
+      },
+    );
+  }
+
+  Widget _buildDialog(bool isDark) {
     final bool canSend = _selectedAmount > 0 && _phoneController.text.trim().length >= 8 && !_isLoading;
 
+    final dialogBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final fieldBg = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF3F4F6);
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final hintColor = isDark ? Colors.grey : Colors.black38;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+    final disabledBtnBg = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final disabledBtnText = isDark ? Colors.grey.shade500 : Colors.black38;
+
     return Dialog(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: dialogBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: SingleChildScrollView( // Ajouté au cas où le clavier masque le bas
+        child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.local_cafe, color: Color(0xFF8B5CF6), size: 40),
+              // ✅ Icône accent au lieu de violette
+              Icon(Icons.local_cafe, color: accentColor, size: 40),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Soutenir ce créateur',
-                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
                 'à ${widget.creatorName}',
-                style: const TextStyle(color: Colors.grey, fontSize: 14),
+                style: TextStyle(color: subTextColor, fontSize: 14),
               ),
               const SizedBox(height: 24),
-              
-              // 1. CHAMP DE SAISIE DU MONTANT
+
+              // ─── 1. MONTANT ───
               TextField(
                 controller: _amountController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onChanged: _onAmountChanged,
-                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
                 decoration: InputDecoration(
                   hintText: '0',
-                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 28),
+                  hintStyle: TextStyle(color: hintColor, fontSize: 28),
                   suffixText: 'FCFA',
-                  suffixStyle: const TextStyle(color: Colors.grey, fontSize: 16),
+                  suffixStyle: TextStyle(color: subTextColor, fontSize: 16),
                   filled: true,
-                  fillColor: const Color(0xFF2A2A2A),
+                  fillColor: fieldBg,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12), 
-                    borderSide: BorderSide.none
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              
-              // 2. SUGGESTIONS RAPIDES
+
+              // ─── 2. SUGGESTIONS ───
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -169,35 +185,42 @@ class _TipDialogState extends State<TipDialog> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: isSelected ? const Color(0xFF8B5CF6) : const Color(0xFF2A2A2A),
+                        // ✅ Sélection : noir en clair / blanc en sombre
+                        color: isSelected ? accentColor : fieldBg,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: isSelected ? const Color(0xFF8B5CF6) : Colors.transparent),
+                        border: Border.all(color: isSelected ? accentColor : Colors.transparent),
                       ),
                       child: Text(
                         '${amount.toInt()}',
-                        style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: isSelected ? accentTextColor : subTextColor,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   );
                 }).toList(),
               ),
               const SizedBox(height: 24),
-              
-              // 3. MOYEN DE PAIEMENT (Mobile Money)
+
+              // ─── 3. MOYEN DE PAIEMENT ───
               DropdownButtonFormField<String>(
                 value: _selectedPaymentMethod,
                 decoration: InputDecoration(
                   labelText: 'Moyen de paiement',
-                  labelStyle: const TextStyle(color: Colors.grey),
+                  labelStyle: TextStyle(color: subTextColor),
                   filled: true,
-                  fillColor: const Color(0xFF2A2A2A),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  fillColor: fieldBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
-                dropdownColor: const Color(0xFF2A2A2A),
+                dropdownColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
                 items: _paymentMethods.map((method) {
                   return DropdownMenuItem(
                     value: method,
-                    child: Text(method, style: const TextStyle(color: Colors.white)),
+                    child: Text(method, style: TextStyle(color: textColor)),
                   );
                 }).toList(),
                 onChanged: (value) {
@@ -205,62 +228,82 @@ class _TipDialogState extends State<TipDialog> {
                 },
               ),
               const SizedBox(height: 16),
-              
-              // 4. NUMÉRO DE TÉLÉPHONE
+
+              // ─── 4. NUMÉRO ───
               TextField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: textColor),
+                onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   labelText: 'Ton numéro Mobile Money',
-                  labelStyle: const TextStyle(color: Colors.grey),
+                  labelStyle: TextStyle(color: subTextColor),
                   hintText: 'Ex: 07 07 07 07',
-                  hintStyle: const TextStyle(color: Colors.grey),
+                  hintStyle: TextStyle(color: hintColor),
                   filled: true,
-                  fillColor: const Color(0xFF2A2A2A),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  prefixIcon: const Icon(Icons.phone, color: Color(0xFF8B5CF6)),
+                  fillColor: fieldBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  // ✅ Icône accent au lieu de violette
+                  prefixIcon: Icon(Icons.phone, color: accentColor),
                 ),
               ),
               const SizedBox(height: 16),
-              
-              // 5. MESSAGE OPTIONNEL
+
+              // ─── 5. MESSAGE ───
               TextField(
                 controller: _messageController,
                 maxLines: 2,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: textColor),
                 decoration: InputDecoration(
                   labelText: 'Message d\'encouragement (optionnel)',
-                  labelStyle: const TextStyle(color: Colors.grey),
+                  labelStyle: TextStyle(color: subTextColor),
                   filled: true,
-                  fillColor: const Color(0xFF2A2A2A),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  fillColor: fieldBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
-              
-              // 6. BOUTON D'ENVOI
+
+              // ─── 6. BOUTON ENVOYER ───
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: canSend ? _sendTip : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: canSend ? const Color(0xFF8B5CF6) : Colors.grey.shade800,
+                    // ✅ Bouton : noir en clair / blanc en sombre
+                    backgroundColor: canSend ? accentColor : disabledBtnBg,
+                    foregroundColor: canSend ? accentTextColor : disabledBtnText,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: _isLoading 
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  child: _isLoading
+                      ? SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(color: accentTextColor, strokeWidth: 2),
+                        )
                       : Text(
-                          'Payer ${_selectedAmount.toInt()} FCFA', 
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          'Payer ${_selectedAmount.toInt()} FCFA',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: canSend ? accentTextColor : disabledBtnText,
+                          ),
                         ),
                 ),
               ),
               const SizedBox(height: 12),
+
+              // ─── 7. ANNULER ───
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+                child: Text('Annuler', style: TextStyle(color: subTextColor)),
               ),
             ],
           ),

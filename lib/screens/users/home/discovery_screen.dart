@@ -7,8 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
-import '../profile/profile_screen.dart'; // ✅ AJOUTÉ : Pour rediriger vers ton propre profil
+import '../profile/profile_screen.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 import '../../../services/offline_manager.dart';
 import '../explore/explore_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -36,13 +37,15 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
   final Set<String> _subscribedCreatorIds = {};
   final Map<String, bool> _heartAnimations = <String, bool>{};
 
+  final Map<String, String?> _tapIndicators = {};
+  final Map<String, DateTime> _lastTapTime = {};
+
   String? _currentUserId;
   String _currentUserName = 'Utilisateur';
   bool _isLoading = true;
   bool _hasLoadedOnce = false;
   bool _isRefreshing = false;
 
-  // Stockage des contrôleurs vidéo par postId
   final Map<String, VideoPlayerController> _videoControllers = {};
 
   @override
@@ -55,7 +58,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
   @override
   void dispose() {
     _horizontalPageController.dispose();
-    // Nettoyer les contrôleurs vidéo
     _videoControllers.values.forEach((c) => c.dispose());
     _videoControllers.clear();
     super.dispose();
@@ -63,6 +65,110 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
 
   @override
   bool get wantKeepAlive => true;
+
+  // ═══════════════════════════════════════════════════════════════
+  //  TAP VIDÉO (style YouTube)
+  // ═══════════════════════════════════════════════════════════════
+  void _handleVideoTap(String postId, double tapX, double screenWidth) {
+    final controller = _videoControllers[postId];
+    if (controller == null || !controller.value.isInitialized) return;
+
+    final now = DateTime.now();
+    final lastTap = _lastTapTime[postId];
+    final isDoubleTap = lastTap != null && now.difference(lastTap).inMilliseconds < 300;
+    _lastTapTime[postId] = now;
+
+    if (isDoubleTap) return;
+
+    final third = screenWidth / 3;
+    String zone;
+    if (tapX < third) {
+      zone = 'rewind';
+    } else if (tapX > screenWidth - third) {
+      zone = 'forward';
+    } else {
+      zone = 'center';
+    }
+
+    if (zone == 'rewind') {
+      final newPos = controller.value.position - const Duration(seconds: 10);
+      controller.seekTo(newPos.isNegative ? Duration.zero : newPos);
+      _showTapIndicator(postId, 'rewind');
+    } else if (zone == 'forward') {
+      final maxDur = controller.value.duration;
+      final newPos = controller.value.position + const Duration(seconds: 10);
+      controller.seekTo(newPos > maxDur ? maxDur : newPos);
+      _showTapIndicator(postId, 'forward');
+    } else {
+      if (controller.value.isPlaying) {
+        controller.pause();
+        _showTapIndicator(postId, 'pause');
+      } else {
+        controller.play();
+        _showTapIndicator(postId, 'play');
+      }
+    }
+  }
+
+  void _showTapIndicator(String postId, String type) {
+    setState(() => _tapIndicators[postId] = type);
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (mounted && _tapIndicators[postId] == type) {
+        setState(() => _tapIndicators[postId] = null);
+      }
+    });
+  }
+
+  Widget _buildTapIndicator(String postId) {
+    final type = _tapIndicators[postId];
+    if (type == null) return const SizedBox.shrink();
+
+    IconData icon;
+    String label = '';
+    switch (type) {
+      case 'play':
+        icon = Icons.play_arrow_rounded;
+        break;
+      case 'pause':
+        icon = Icons.pause_rounded;
+        break;
+      case 'forward':
+        icon = Icons.fast_forward_rounded;
+        label = '+10s';
+        break;
+      case 'rewind':
+        icon = Icons.fast_rewind_rounded;
+        label = '-10s';
+        break;
+      default:
+        icon = Icons.circle;
+    }
+
+    return IgnorePointer(
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.55),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, spreadRadius: 5),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: 48),
+              if (label.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _handleRefresh() async {
     if (_isRefreshing) return;
@@ -76,12 +182,8 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
 
   Future<void> _fetchData() async {
     try {
-      if (_hasLoadedOnce && !_isRefreshing) {
-        debugPrint('⏭️ Données déjà en mémoire, pas de rechargement');
-        return;
-      }
+      if (_hasLoadedOnce && !_isRefreshing) return;
 
-      debugPrint('⏳ [FETCH] Récupération des données...');
       final userId = _currentUserId;
 
       if (userId != null) {
@@ -208,9 +310,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
       _heartAnimations[postId] = true;
     });
     Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) setState(() {
-        _heartAnimations[postId] = false;
-      });
+      if (mounted) setState(() => _heartAnimations[postId] = false);
     });
   }
 
@@ -253,12 +353,18 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
     });
   }
 
-  void _openComments(BuildContext context, String postId) {
+  void _openComments(BuildContext context, String postId, bool isDark) {
     final TextEditingController commentController = TextEditingController();
+    final sheetBg = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final cardBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final inputBg = isDark ? Colors.black : Colors.white;
+    final border = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.black,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -279,18 +385,14 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade700,
+                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade400,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const Text(
+                  Text(
                     'Commentaires',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 20),
                   Expanded(
@@ -302,23 +404,19 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                           .order('created_at', ascending: true),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.primary,
-                            ),
-                          );
+                          return Center(child: CircularProgressIndicator(color: textColor));
                         }
                         final comments = snapshot.data ?? [];
                         if (comments.isEmpty) {
-                          return const Center(
+                          return Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey),
-                                SizedBox(height: 16),
+                                Icon(Icons.chat_bubble_outline, size: 60, color: isDark ? Colors.grey : Colors.grey.shade400),
+                                const SizedBox(height: 16),
                                 Text(
                                   'Aucun commentaire',
-                                  style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.w500),
+                                  style: TextStyle(color: isDark ? Colors.grey : Colors.black54, fontSize: 16, fontWeight: FontWeight.w500),
                                 ),
                               ],
                             ),
@@ -332,7 +430,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                               margin: const EdgeInsets.only(bottom: 16),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1A1A1A),
+                                color: cardBg,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -340,20 +438,12 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                                 children: [
                                   Text(
                                     comment['user_name'] ?? 'Utilisateur',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
+                                    style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
                                     comment['content'] ?? '',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      height: 1.4,
-                                    ),
+                                    style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14, height: 1.4),
                                   ),
                                 ],
                               ),
@@ -366,28 +456,28 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.black,
+                      color: inputBg,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.grey.shade800),
+                      border: Border.all(color: border),
                     ),
                     child: Row(
                       children: [
                         Expanded(
                           child: TextField(
                             controller: commentController,
-                            style: const TextStyle(color: Colors.white, fontSize: 14),
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor, fontSize: 14),
+                            decoration: InputDecoration(
                               hintText: 'Ajouter un commentaire...',
-                              hintStyle: TextStyle(color: Colors.white54),
+                              hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black38),
                               border: InputBorder.none,
                               filled: true,
-                              fillColor: Colors.black,
-                              contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                              fillColor: inputBg,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
                             ),
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.send, color: AppColors.primary),
+                          icon: Icon(Icons.send, color: textColor),
                           onPressed: () async {
                             final content = commentController.text.trim();
                             if (content.isEmpty) return;
@@ -409,22 +499,14 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                                     .update({'comments_count': newCount})
                                     .eq('id', postId);
                                 setState(() {
-                                  final index = _posts.indexWhere(
-                                    (p) => p['id'].toString() == postId,
-                                  );
-                                  if (index != -1) {
-                                    _posts[index]['comments_count'] = newCount;
-                                  }
+                                  final index = _posts.indexWhere((p) => p['id'].toString() == postId);
+                                  if (index != -1) _posts[index]['comments_count'] = newCount;
                                 });
                               }
                               commentController.clear();
                               setModalState(() {});
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Commentaire ajouté'),
-                                  backgroundColor: Colors.green,
-                                  duration: Duration(seconds: 1),
-                                ),
+                                const SnackBar(content: Text('Commentaire ajouté'), backgroundColor: Colors.green, duration: Duration(seconds: 1)),
                               );
                             } catch (e) {
                               debugPrint('❌ Erreur commentaire: $e');
@@ -506,21 +588,21 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
   }
 
   // ════════════════════════════════════════════════════════════════
-  //  PARTIE FRONT-END
+  //  FRONT-END
   // ════════════════════════════════════════════════════════════════
 
-  Widget _buildPostsPageView(List<Map<String, dynamic>> postsList) {
+  Widget _buildPostsPageView(List<Map<String, dynamic>> postsList, bool isDark) {
     if (postsList.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.video_collection_outlined, size: 60, color: Colors.white54),
+            Icon(Icons.video_collection_outlined, size: 60, color: isDark ? Colors.white54 : Colors.black38),
             const SizedBox(height: 12),
             Text(
               _selectedTab == 0 ? 'Aucune publication de vos abonnements' : 'Aucune publication pour le moment',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white54, fontSize: 14),
+              style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 14),
             ),
           ],
         ),
@@ -553,38 +635,51 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
         final bool showHeart = _heartAnimations[postId] == true;
 
         Color getBgColor() {
-          if (backgroundColorHex == null) return Colors.grey.shade800;
+          if (backgroundColorHex == null) {
+            return isDark ? Colors.grey.shade800 : Colors.grey.shade200;
+          }
           try {
             String hex = backgroundColorHex.replaceAll('#', '0xFF');
             return Color(int.parse(hex));
           } catch (e) {
-            return Colors.grey.shade800;
+            return isDark ? Colors.grey.shade800 : Colors.grey.shade200;
           }
         }
 
-        return GestureDetector(
-          onDoubleTap: () => _handleDoubleTap(postId, int.tryParse(likesCount) ?? 0, index, postsList),
-          behavior: HitTestBehavior.translucent,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // ─── MÉDIA (VIDÉO OU IMAGE) ──────────────────
-              if (mediaType == 'text')
-                Container(
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // ─── MÉDIA ──────────────────
+            if (mediaType == 'text')
+              GestureDetector(
+                onDoubleTap: () => _handleDoubleTap(postId, int.tryParse(likesCount) ?? 0, index, postsList),
+                child: Container(
                   color: getBgColor(),
                   child: Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32.0),
                       child: Text(
                         caption.isEmpty ? '...' : caption,
-                        style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600, height: 1.4),
+                        style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ),
                   ),
-                )
-              else if (mediaType == 'video')
-                Positioned.fill(
+                ),
+              )
+            else if (mediaType == 'video')
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (details) {
+                    _handleVideoTap(postId, details.localPosition.dx, MediaQuery.of(context).size.width);
+                  },
+                  onDoubleTap: () => _handleDoubleTap(postId, int.tryParse(likesCount) ?? 0, index, postsList),
                   child: _SmartMediaWidget(
                     localPath: null,
                     mediaUrl: mediaUrl,
@@ -593,229 +688,228 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                       _videoControllers[postId] = controller;
                     },
                   ),
-                )
-              else
-                (mediaUrl != null && mediaUrl.toString().isNotEmpty)
-                    ? Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.white54)))
-                    : Container(color: Colors.grey.shade900, child: const Center(child: Icon(Icons.image_not_supported, size: 50, color: Colors.white54))),
+                ),
+              )
+            else
+              (mediaUrl != null && mediaUrl.toString().isNotEmpty)
+                  ? GestureDetector(
+                      onDoubleTap: () => _handleDoubleTap(postId, int.tryParse(likesCount) ?? 0, index, postsList),
+                      child: Image.network(mediaUrl, fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Center(
+                              child: Icon(Icons.broken_image,
+                                  color: isDark ? Colors.white54 : Colors.black38))),
+                    )
+                  : Container(
+                      color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
+                      child: Center(
+                          child: Icon(Icons.image_not_supported,
+                              size: 50, color: isDark ? Colors.white54 : Colors.black38)),
+                    ),
 
-              // ─── CADENAS (ABONNEMENT REQUIS) ──────────────
-              if (isLocked)
-                Container(
-                  color: Colors.black.withOpacity(0.7),
-                  child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+            // ─── CADENAS ──────────────
+            if (isLocked)
+              Container(
+                color: Colors.black.withOpacity(0.7),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.lock, color: Colors.white, size: 48),
+                      SizedBox(height: 12),
+                      Text('Contenu réservé aux abonnés',
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+
+            // ─── CŒUR ANIMÉ ──────────────────
+            if (showHeart)
+              const Center(child: Icon(Icons.favorite, color: Colors.redAccent, size: 100)),
+
+            // ─── DÉGRADÉ LISIBILITÉ (UNIQUEMENT POUR VIDÉO/IMAGE) ──────────────────
+            if (mediaType != 'text')
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.4),
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.8),
+                    ],
+                  ),
+                ),
+              ),
+
+            // ─── INDICATEUR DE TAP ───
+            if (mediaType == 'video' && !isLocked)
+              Positioned.fill(child: _buildTapIndicator(postId)),
+
+            // ─── INFOS CRÉATEUR ───
+            Positioned(
+              left: 16,
+              right: 80,
+              bottom: 70,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      if (isMyOwnPost) {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen()));
+                      } else {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => CreatorProfileScreen(creatorId: creatorId)));
+                      }
+                    },
+                    child: Row(
                       children: [
-                        Icon(Icons.lock, color: Colors.white, size: 48),
-                        SizedBox(height: 12),
-                        Text('Contenu réservé aux abonnés', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // ─── CŒUR ANIMÉ (DOUBLE TAP) ──────────────────
-              if (showHeart)
-                const Center(
-                  child: Icon(Icons.favorite, color: Colors.redAccent, size: 100),
-                ),
-
-              // ─── DÉGRADÉ POUR LISIBILITÉ ──────────────────
-              if (mediaType != 'text')
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.3),
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.8),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // ─── INFOS EN BAS À GAUCHE (AVATAR, NOM, LÉGENDE) ──
-              Positioned(
-                left: 12,
-                right: 80,
-                bottom: 80,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // ✅ ALGORITHME DE REDIRECTION INTELLIGENTE
-                    GestureDetector(
-                      onTap: () {
-                        if (isMyOwnPost) {
-                          // Si c'est MON propre post, je vais sur mon profil personnel
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const ProfileScreen()),
-                          );
-                        } else {
-                          // Si c'est le post d'un AUTRE créateur, je vais sur son profil
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => CreatorProfileScreen(creatorId: creatorId),
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                          backgroundImage: post['profiles']?['avatar_url'] != null
+                              ? NetworkImage(post['profiles']!['avatar_url'])
+                              : null,
+                          child: post['profiles']?['avatar_url'] == null
+                              ? const Icon(Icons.person, color: Colors.white, size: 20)
+                              : null,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            creatorName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
                             ),
-                          );
-                        }
-                      },
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: Colors.grey.shade800,
-                            backgroundImage: post['profiles']?['avatar_url'] != null
-                                ? NetworkImage(post['profiles']!['avatar_url'])
-                                : null,
-                            child: post['profiles']?['avatar_url'] == null
-                                ? const Icon(Icons.person, color: Colors.white, size: 18)
-                                : null,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              creatorName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          // ✅ On n'affiche le bouton "S'abonner" que si ce n'est PAS mon propre post
-                          if (!isFollowed && !isMyOwnPost)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        ),
+                        if (!isFollowed && !isMyOwnPost)
+                          GestureDetector(
+                            onTap: () => _handleFollow(creatorId),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: const Text(
                                 'S\'abonner',
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold),
                               ),
                             ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    if (caption.isNotEmpty)
-                      Container(
-                        constraints: const BoxConstraints(maxHeight: 40),
-                        child: Text(
-                          caption,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            height: 1.3,
-                            shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (caption.isNotEmpty)
+                    Text(
+                      caption,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        height: 1.3,
+                        shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
                       ),
-                  ],
-                ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
               ),
+            ),
 
-              // ─── BOUTONS D'ACTION À DROITE ──────────────────
-              Positioned(
-                right: 8,
-                bottom: 80,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Like
-                    _buildActionButton(
-                      icon: isLiked ? Icons.favorite : Icons.favorite_border,
-                      label: likesCount,
-                      onTap: () => _handleLike(postId, int.tryParse(likesCount) ?? 0, index, postsList),
-                      iconColor: isLiked ? Colors.red : Colors.white,
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Commentaires
-                    _buildActionButton(
-                      icon: Icons.chat_bubble_outline,
-                      label: commentsCount,
-                      onTap: () => _openComments(context, postId),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Tips (pourboire)
-                    _buildActionButton(
-                      icon: Icons.local_cafe,
-                      label: '',
-                      onTap: () => _openTipDialog(context, creatorId, creatorName),
-                      iconColor: Colors.orangeAccent,
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Partager
-                    _buildActionButton(
-                      icon: Icons.share,
-                      label: '',
-                      onTap: () => _handleShare(post),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Télécharger
-                    if (mediaType != 'text')
-                      _buildActionButton(
-                        icon: Icons.download_rounded,
-                        label: '',
-                        onTap: () async {
-                          if (mediaUrl == null) return;
+            // ─── BOUTONS D'ACTION ───
+            Positioned(
+              right: 12,
+              bottom: 90,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildTikTokButton(
+                    icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? const Color(0xFFFF2D55) : Colors.white, size: 34),
+                    label: likesCount,
+                    onTap: () => _handleLike(postId, int.tryParse(likesCount) ?? 0, index, postsList),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTikTokButton(
+                    icon: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 32),
+                    label: commentsCount,
+                    onTap: () => _openComments(context, postId, isDark),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTikTokButton(
+                    icon: const Icon(Icons.diamond_outlined, color: Color(0xFFFFB800), size: 32),
+                    label: 'Soutenir',
+                    onTap: () => _openTipDialog(context, creatorId, creatorName),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTikTokButton(
+                    icon: Transform.rotate(angle: 3.14159, child: const Icon(Icons.reply, color: Colors.white, size: 36)),
+                    label: 'Partager',
+                    onTap: () => _handleShare(post),
+                  ),
+                  const SizedBox(height: 16),
+                  if (mediaType != 'text') ...[
+                    _buildTikTokButton(
+                      icon: const Icon(Icons.download_rounded, color: Colors.white70, size: 30),
+                      label: 'Sauver',
+                      onTap: () async {
+                        if (mediaUrl == null) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Téléchargement...'), duration: Duration(seconds: 1), backgroundColor: Colors.black87),
+                        );
+                        final localPath = await OfflineManager.downloadVideoForOffline(postId, mediaUrl, post);
+                        if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Téléchargement en cours...'), duration: Duration(seconds: 2)),
+                            SnackBar(
+                              content: Text(localPath != null ? '✅ Sauvegardé' : '❌ Échec'),
+                              backgroundColor: localPath != null ? Colors.green : Colors.red,
+                              duration: const Duration(seconds: 1),
+                            ),
                           );
-                          final localPath = await OfflineManager.downloadVideoForOffline(postId, mediaUrl, post);
-                          if (mounted) {
-                            if (localPath != null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('✅ Sauvegardé !'), backgroundColor: Colors.green),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('❌ Échec'), backgroundColor: Colors.red),
-                              );
-                            }
-                          }
-                        },
-                        iconColor: Colors.blueAccent,
-                      ),
-                    if (mediaType != 'text') const SizedBox(height: 14),
-
-                    // Menu trois points (signalement)
-                    _buildActionButton(
-                      icon: Icons.more_vert,
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  Container(
+                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), shape: BoxShape.circle),
+                    child: _buildTikTokButton(
+                      icon: const Icon(Icons.more_horiz, color: Colors.white, size: 30),
                       label: '',
                       onTap: () {
+                        final menuBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+                        final textColor = isDark ? Colors.white : Colors.black87;
                         showModalBottomSheet(
                           context: context,
-                          backgroundColor: const Color(0xFF1A1A1A),
+                          backgroundColor: menuBg,
                           shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                           ),
                           builder: (context) => Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              const SizedBox(height: 12),
+                              Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.grey.shade700 : Colors.grey.shade400,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
                               ListTile(
-                                leading: const Icon(Icons.flag_outlined, color: Colors.redAccent),
-                                title: const Text('Signaler', style: TextStyle(color: Colors.white)),
+                                leading: const Icon(Icons.flag_outlined, color: Colors.redAccent, size: 28),
+                                title: Text('Signaler ce contenu',
+                                    style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.w500)),
                                 onTap: () {
                                   Navigator.pop(context);
                                   showDialog(
@@ -824,43 +918,43 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                                   );
                                 },
                               ),
+                              const SizedBox(height: 16),
                             ],
                           ),
                         );
                       },
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
 
-              // ─── BARRE DE CONTRÔLE VIDÉO (TOUJOURS AFFICHÉE) ──
-              if (mediaType == 'video')
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _VideoControls(controller: _videoControllers[postId]),
-                ),
-            ],
-          ),
+            // ─── BARRE DE PROGRESSION ───
+            if (mediaType == 'video')
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _BottomVideoSlider(controller: _videoControllers[postId]),
+              ),
+          ],
         );
       },
     );
   }
 
-  // ─── BOUTON D'ACTION RÉUTILISABLE ──────────────────────────
-  Widget _buildActionButton({
-    required IconData icon,
+  Widget _buildTikTokButton({
+    required Widget icon,
     required String label,
     required VoidCallback onTap,
-    Color iconColor = Colors.white,
   }) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: iconColor, size: 30),
+          icon,
           if (label.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
@@ -869,8 +963,10 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                 color: Colors.white,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
                 shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(0, 1))],
               ),
+              textAlign: TextAlign.center,
             ),
           ],
         ],
@@ -882,15 +978,30 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
   Widget build(BuildContext context) {
     super.build(context);
 
+    // ✅ ÉCOUTE DU THÈME
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white60 : Colors.black54;
+
     final followedPosts = _posts.where((post) {
       final creatorId = post['user_id']?.toString() ?? '';
       return _followedCreatorIds.contains(creatorId);
     }).toList();
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? Center(child: CircularProgressIndicator(color: textColor))
           : Stack(
               children: [
                 NotificationListener<ScrollNotification>(
@@ -904,13 +1015,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                     controller: _horizontalPageController,
                     scrollDirection: Axis.vertical,
                     onPageChanged: (index) {
-                      setState(() {
-                        _selectedTab = index;
-                      });
+                      setState(() => _selectedTab = index);
                     },
                     children: [
-                      _buildPostsPageView(followedPosts),
-                      _buildPostsPageView(_posts),
+                      _buildPostsPageView(followedPosts, isDark),
+                      _buildPostsPageView(_posts, isDark),
                     ],
                   ),
                 ),
@@ -923,19 +1032,25 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                     child: Center(
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-                        child: const Row(
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.black54 : Colors.white70,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2)),
-                            SizedBox(width: 8),
-                            Text('Actualisation...', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                            SizedBox(width: 16, height: 16,
+                                child: CircularProgressIndicator(color: textColor, strokeWidth: 2)),
+                            const SizedBox(width: 8),
+                            Text('Actualisation...',
+                                style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),
                     ),
                   ),
 
+                // ✅ HEADER ADAPTATIF
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 10,
                   left: 16,
@@ -949,27 +1064,33 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
                           children: [
                             Icon(Icons.videocam, color: Colors.redAccent, size: 24),
                             SizedBox(width: 6),
-                            Text('LIVE', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                            Text('LIVE',
+                                style: TextStyle(
+                                    color: Colors.redAccent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14)),
                           ],
                         ),
                       ),
                       Row(
                         children: [
-                          _buildTopTab('Abonnés', 0),
+                          _buildTopTab('Abonnés', 0, isDark),
                           const SizedBox(width: 20),
-                          _buildTopTab('Pour toi', 1),
+                          _buildTopTab('Pour toi', 1, isDark),
                         ],
                       ),
                       Row(
                         children: [
                           GestureDetector(
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ExploreScreen())),
-                            child: const Icon(Icons.search, color: Colors.white, size: 26),
+                            onTap: () => Navigator.push(context,
+                                MaterialPageRoute(builder: (context) => const ExploreScreen())),
+                            child: Icon(Icons.search, color: textColor, size: 26),
                           ),
                           const SizedBox(width: 16),
                           GestureDetector(
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen())),
-                            child: const Icon(Icons.notifications_none, color: Colors.white, size: 26),
+                            onTap: () => Navigator.push(context,
+                                MaterialPageRoute(builder: (context) => const NotificationsScreen())),
+                            child: Icon(Icons.notifications_none, color: textColor, size: 26),
                           ),
                         ],
                       ),
@@ -981,7 +1102,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
     );
   }
 
-  Widget _buildTopTab(String title, int index) {
+  Widget _buildTopTab(String title, int index, bool isDark) {
     bool isSelected = _selectedTab == index;
     return GestureDetector(
       onTap: () {
@@ -997,7 +1118,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
           Text(
             title,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white60,
+              color: isSelected
+                  ? (isDark ? Colors.white : Colors.black87)
+                  : (isDark ? Colors.white60 : Colors.black45),
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               fontSize: 15,
             ),
@@ -1008,7 +1131,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
               height: 3,
               width: 24,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isDark ? Colors.white : Colors.black,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1019,7 +1142,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with AutomaticKeepAli
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  WIDGET _SmartMediaWidget (UNIQUEMENT LA VIDÉO, SANS BARRE DE CONTRÔLE)
+//  WIDGET _SmartMediaWidget
 // ═══════════════════════════════════════════════════════════════════
 class _SmartMediaWidget extends StatefulWidget {
   final String? localPath;
@@ -1100,7 +1223,6 @@ class _SmartMediaWidgetState extends State<_SmartMediaWidget> {
 
   @override
   void dispose() {
-    // Ne pas dispose le contrôleur ici car il est géré par le parent
     super.dispose();
   }
 
@@ -1125,11 +1247,10 @@ class _SmartMediaWidgetState extends State<_SmartMediaWidget> {
     if (!_initialized) {
       return Container(
         color: Colors.grey.shade900,
-        child: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        child: const Center(child: CircularProgressIndicator(color: Colors.white)),
       );
     }
 
-    // Image
     if (widget.mediaType.toLowerCase().contains('image') ||
         widget.mediaUrl?.toLowerCase().endsWith('.jpg') == true ||
         widget.mediaUrl?.toLowerCase().endsWith('.png') == true) {
@@ -1140,43 +1261,28 @@ class _SmartMediaWidgetState extends State<_SmartMediaWidget> {
       }
     }
 
-    // Vidéo (sans barre de contrôle, uniquement la lecture)
-    return GestureDetector(
-      onTap: () {
-        if (_controller != null) {
-          if (_controller!.value.isPlaying) {
-            _controller!.pause();
-          } else {
-            _controller!.play();
-          }
-        }
-      },
-      child: AspectRatio(
-        aspectRatio: _controller!.value.aspectRatio,
-        child: VideoPlayer(_controller!),
-      ),
+    return AspectRatio(
+      aspectRatio: _controller!.value.aspectRatio,
+      child: VideoPlayer(_controller!),
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  WIDGET _VideoControls (BARRE DE CONTRÔLE AVEC GESTION DU CHARGEMENT)
+//  WIDGET _BottomVideoSlider
 // ═══════════════════════════════════════════════════════════════════
-class _VideoControls extends StatefulWidget {
+class _BottomVideoSlider extends StatefulWidget {
   final VideoPlayerController? controller;
-  const _VideoControls({this.controller});
+  const _BottomVideoSlider({this.controller});
 
   @override
-  State<_VideoControls> createState() => _VideoControlsState();
+  State<_BottomVideoSlider> createState() => _BottomVideoSliderState();
 }
 
-class _VideoControlsState extends State<_VideoControls> {
+class _BottomVideoSliderState extends State<_BottomVideoSlider> {
   bool _isPlaying = false;
-  bool _isMuted = false;
-  double _speed = 1.0;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
-  bool _isDragging = false;
   bool _isReady = false;
 
   @override
@@ -1190,17 +1296,21 @@ class _VideoControlsState extends State<_VideoControls> {
       widget.controller!.addListener(_update);
       _update();
       setState(() => _isReady = true);
-    } else {
-      setState(() => _isReady = false);
     }
   }
 
   @override
-  void didUpdateWidget(covariant _VideoControls oldWidget) {
+  void didUpdateWidget(covariant _BottomVideoSlider oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.controller != oldWidget.controller) {
       oldWidget.controller?.removeListener(_update);
-      _attachListener();
+      if (widget.controller != null) {
+        widget.controller!.addListener(_update);
+        _update();
+        if (mounted) setState(() => _isReady = true);
+      } else {
+        if (mounted) setState(() => _isReady = false);
+      }
     }
   }
 
@@ -1210,32 +1320,16 @@ class _VideoControlsState extends State<_VideoControls> {
       _isPlaying = widget.controller!.value.isPlaying;
       _position = widget.controller!.value.position;
       _duration = widget.controller!.value.duration;
-      _isMuted = widget.controller!.value.volume == 0;
     });
   }
 
   void _togglePlayPause() {
     if (!_isReady || widget.controller == null) return;
-    if (_isPlaying) widget.controller!.pause();
-    else widget.controller!.play();
-  }
-
-  void _toggleMute() {
-    if (!_isReady || widget.controller == null) return;
-    setState(() {
-      _isMuted = !_isMuted;
-      widget.controller!.setVolume(_isMuted ? 0.0 : 1.0);
-    });
-  }
-
-  void _changeSpeed() {
-    if (!_isReady || widget.controller == null) return;
-    setState(() {
-      if (_speed == 1.0) _speed = 1.5;
-      else if (_speed == 1.5) _speed = 2.0;
-      else _speed = 1.0;
-      widget.controller!.setPlaybackSpeed(_speed);
-    });
+    if (_isPlaying) {
+      widget.controller!.pause();
+    } else {
+      widget.controller!.play();
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -1252,75 +1346,51 @@ class _VideoControlsState extends State<_VideoControls> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Le slider reste blanc (au-dessus de la vidéo) pour la lisibilité
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.only(left: 8, right: 16, top: 4, bottom: 0),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [Colors.black.withOpacity(0.85), Colors.transparent],
+          colors: [Colors.black.withOpacity(0.9), Colors.transparent],
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Play/Pause + Temps
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: _isReady ? _togglePlayPause : null,
-                    child: Icon(
-                      _isReady && _isPlaying ? Icons.pause : Icons.play_arrow,
-                      color: Colors.white,
-                      size: 28,
-                    ),
+              GestureDetector(
+                onTap: _togglePlayPause,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    _isReady && _isPlaying ? Icons.pause : Icons.play_arrow,
+                    color: Colors.white,
+                    size: 28,
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _isReady
-                        ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
-                        : '--:-- / --:--',
-                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                ],
+                ),
               ),
-              // Mute + Vitesse
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: _isReady ? _toggleMute : null,
-                    child: Icon(
-                      _isReady && _isMuted ? Icons.volume_off : Icons.volume_up,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  GestureDetector(
-                    onTap: _isReady ? _changeSpeed : null,
-                    child: Text(
-                      _isReady ? '${_speed}x' : '1x',
-                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 4),
+              Text(
+                _isReady
+                    ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
+                    : '--:-- / --:--',
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
               ),
+              const Spacer(),
             ],
           ),
-          const SizedBox(height: 6),
-          // Slider interactif
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              trackHeight: 4,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
               activeTrackColor: Colors.white,
               inactiveTrackColor: Colors.white.withOpacity(0.3),
               thumbColor: Colors.white,
-              overlayColor: Colors.white.withOpacity(0.2),
             ),
             child: Slider(
               value: _isReady && _duration.inMilliseconds > 0
@@ -1329,21 +1399,13 @@ class _VideoControlsState extends State<_VideoControls> {
               onChanged: _isReady
                   ? (value) {
                       setState(() {
-                        _isDragging = true;
-                        _position = Duration(
-                          milliseconds: (value * _duration.inMilliseconds).round(),
-                        );
+                        _position = Duration(milliseconds: (value * _duration.inMilliseconds).round());
                       });
                     }
                   : null,
-              onChangeStart: (_) => _isDragging = true,
               onChangeEnd: _isReady
                   ? (value) {
-                      final seekTo = Duration(
-                        milliseconds: (value * _duration.inMilliseconds).round(),
-                      );
-                      widget.controller!.seekTo(seekTo);
-                      setState(() => _isDragging = false);
+                      widget.controller!.seekTo(Duration(milliseconds: (value * _duration.inMilliseconds).round()));
                     }
                   : null,
             ),

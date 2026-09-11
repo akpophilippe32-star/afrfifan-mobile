@@ -3,7 +3,8 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:agora_token_generator/agora_token_generator.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:uuid/uuid.dart'; // Assure-toi d'avoir 'uuid: ^4.x.x' dans pubspec.yaml
+import 'package:uuid/uuid.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 
 class GoLiveScreen extends StatefulWidget {
   const GoLiveScreen({super.key});
@@ -16,9 +17,9 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
   RtcEngine? _engine;
   VideoViewController? _localViewController;
   final TextEditingController _titleController = TextEditingController();
-  
+
   bool _isLive = false;
-  bool _isProcessing = false; // ✅ Pour éviter les doubles clics
+  bool _isProcessing = false;
   String? _liveId;
   final String appId = '18d7051c40f14cea8953b23824683c0b';
 
@@ -29,7 +30,6 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
   }
 
   Future<void> _initAgoraForLive() async {
-    // ✅ 1. Vérification stricte des permissions
     final permissions = await [Permission.microphone, Permission.camera].request();
     if (permissions[Permission.camera] != PermissionStatus.granted ||
         permissions[Permission.microphone] != PermissionStatus.granted) {
@@ -37,23 +37,20 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("⚠️ Permissions caméra et micro requises pour le live !")),
         );
-        Navigator.pop(context); // On ferme l'écran si pas de permission
+        Navigator.pop(context);
       }
       return;
     }
 
-    // 2. Initialisation Agora
     _engine = createAgoraRtcEngine();
     await _engine!.initialize(RtcEngineContext(appId: appId));
-    
-    // 🔥 CONFIGURATION SPÉCIALE POUR LES LIVES
+
     await _engine!.setChannelProfile(ChannelProfileType.channelProfileLiveBroadcasting);
     await _engine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
-    
+
     await _engine!.enableVideo();
     await _engine!.startPreview();
 
-    // 3. Contrôleur vidéo local
     _localViewController = VideoViewController(
       rtcEngine: _engine!,
       canvas: const VideoCanvas(uid: 0),
@@ -64,17 +61,18 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
 
   Future<void> _startLive() async {
     if (_titleController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mets un titre à ton Live !")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Mets un titre à ton Live !")),
+      );
       return;
     }
 
-    setState(() => _isProcessing = true); // ✅ Bloque le bouton pendant le chargement
+    setState(() => _isProcessing = true);
 
     try {
       final liveId = const Uuid().v4();
       final currentUserId = Supabase.instance.client.auth.currentUser!.id;
 
-      // 1. Enregistrer le Live dans Supabase
       await Supabase.instance.client.from('live_streams').insert({
         'id': liveId,
         'creator_id': currentUserId,
@@ -84,8 +82,7 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
         'started_at': DateTime.now().toIso8601String(),
       });
 
-      // 2. Générer le token et rejoindre le canal
-      String token = ""; 
+      String token = "";
       final appCertificate = 'ea5e4a39245d4849bfd84a99d5100632';
       token = RtcTokenBuilder.buildTokenWithUid(
         appId: appId,
@@ -113,19 +110,20 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
         });
       }
       print("🔴 LIVE DÉMARRÉ ! ID: $liveId");
-      
+
     } catch (e) {
       print("❌ Erreur démarrage live: $e");
       if (mounted) {
         setState(() => _isProcessing = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur: $e"), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erreur: $e"), backgroundColor: Colors.red),
+        );
       }
     }
   }
 
   Future<void> _endLive() async {
     if (_liveId != null) {
-      // Mettre à jour le statut dans Supabase
       await Supabase.instance.client.from('live_streams').update({
         'status': 'ended',
         'ended_at': DateTime.now().toIso8601String(),
@@ -138,12 +136,25 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 3. Empêcher de quitter accidentellement avec le bouton retour du téléphone
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    // ⚠️ Le live vidéo reste sur fond noir (préview caméra plein écran)
+    // ✅ Le bouton neutre devient noir en clair / blanc en sombre
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return PopScope(
-      canPop: !_isLive, // Autorise la sortie seulement si on n'est pas en live
+      canPop: !_isLive,
       onPopInvoked: (didPop) async {
         if (!didPop && _isLive) {
-          // Si l'utilisateur essaie de quitter pendant le live, on arrête proprement
           await _endLive();
         }
       },
@@ -151,11 +162,11 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            // Caméra du créateur (Plein écran)
+            // ─── CAMÉRA PLEIN ÉCRAN ───
             if (_localViewController != null)
               Positioned.fill(child: AgoraVideoView(controller: _localViewController!)),
-            
-            // Interface par-dessus la caméra
+
+            // ─── CHAMP TITRE ───
             Positioned(
               top: 60,
               left: 20,
@@ -171,14 +182,17 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
                         hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
                         filled: true,
                         fillColor: Colors.black.withOpacity(0.5),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                 ],
               ),
             ),
 
-            // Bouton d'action (Démarrer ou Arrêter)
+            // ─── BOUTON DÉMARRER / ARRÊTER ───
             Positioned(
               bottom: 80,
               left: 0,
@@ -189,15 +203,32 @@ class _GoLiveScreenState extends State<GoLiveScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                     decoration: BoxDecoration(
-                      color: _isLive ? Colors.red : const Color(0xFF6366F1),
+                      // ✅ Arrêter : rouge (convention live)
+                      // ✅ Démarrer : noir en clair / blanc en sombre
+                      color: _isLive ? Colors.red : accentColor,
                       borderRadius: BorderRadius.circular(30),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10)],
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10),
+                      ],
                     ),
                     child: _isProcessing
-                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        ? SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              // ✅ Loader adaptatif sur fond accent
+                              color: _isLive ? Colors.white : accentTextColor,
+                              strokeWidth: 2,
+                            ),
+                          )
                         : Text(
                             _isLive ? "🔴 ARRÊTER LE LIVE" : "🚀 DÉMARRER LE LIVE",
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              // ✅ Texte adaptatif selon fond
+                              color: _isLive ? Colors.white : accentTextColor,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                   ),
                 ),

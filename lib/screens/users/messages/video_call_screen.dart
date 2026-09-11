@@ -4,6 +4,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:agora_token_generator/agora_token_generator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 
 class VideoCallScreen extends StatefulWidget {
   final String otherUserId;
@@ -28,7 +29,7 @@ class VideoCallScreen extends StatefulWidget {
 class _VideoCallScreenState extends State<VideoCallScreen> {
   RtcEngine? _engine;
   RealtimeChannel? _syncChannel;
-  
+
   VideoViewController? _localViewController;
   VideoViewController? _remoteViewController;
 
@@ -41,8 +42,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   Timer? _callTimer;
   int _callDuration = 0;
 
-  final String appId = '18d7051c40f14cea8953b23824683c0b';
-  final Color primaryColor = const Color(0xFF6366F1);
+  final String appId = '18d7051c40fcea8953b23824683c0b';
 
   @override
   void initState() {
@@ -58,7 +58,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     print("📡 [VideoCallScreen] Création du canal de synchro...");
     final channel = Supabase.instance.client.channel('call_sync_$callId');
 
-    // Écoute des messages broadcast
     channel.onBroadcast(event: 'user_joined', callback: (payload) {
       print("✅ [VideoCallScreen] L'autre utilisateur est connecté (broadcast) !");
       if (mounted && !_isOtherUserJoined) {
@@ -76,7 +75,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       }
     });
 
-    // ✅ Écouter les changements de statut de l'appel dans la BDD via PostgresChanges
     channel.onPostgresChanges(
       event: PostgresChangeEvent.update,
       schema: 'public',
@@ -105,7 +103,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       },
     );
 
-    // Écouter les suppressions
     channel.onPostgresChanges(
       event: PostgresChangeEvent.delete,
       schema: 'public',
@@ -139,8 +136,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Future<void> _initAgoraVideo() async {
     print("🎥 [VideoCallScreen] Initialisation de la vidéo...");
-    
-    // ✅ DEMANDER LES PERMISSIONS
+
     final permissions = await [Permission.microphone, Permission.camera].request();
     if (permissions[Permission.camera] != PermissionStatus.granted ||
         permissions[Permission.microphone] != PermissionStatus.granted) {
@@ -152,15 +148,14 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       }
       return;
     }
-    
+
     _engine = createAgoraRtcEngine();
     await _engine!.initialize(RtcEngineContext(appId: appId));
-    
+
     await _engine!.enableAudio();
     await _engine!.enableVideo();
     await _engine!.setEnableSpeakerphone(true);
 
-    // ✅ CONFIGURER LA VIDÉO LOCALE
     _localViewController = VideoViewController(
       rtcEngine: _engine!,
       canvas: const VideoCanvas(uid: 0),
@@ -211,12 +206,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         clientRoleType: ClientRoleType.clientRoleBroadcaster,
       ),
     );
-    
+
     if (mounted) setState(() => _isJoined = true);
   }
 
   Future<void> _leaveChannel() async {
-    if (_isLeaving) return; 
+    if (_isLeaving) return;
     _isLeaving = true;
 
     print("📞 [VideoCallScreen] Raccrochage...");
@@ -266,12 +261,39 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    // ⚠️ La vidéo occupe tout l'écran → le fond reste noir quand la vidéo est active
+    // Mais l'écran d'attente et les contrôles s'adaptent au thème
+
+    final bool hasRemoteVideo = _isOtherUserJoined && _remoteViewController != null;
+
+    // Fond : noir si vidéo active OU mode sombre, blanc si attente + mode clair
+    final bgColor = (hasRemoteVideo || isDark) ? Colors.black : Colors.white;
+
+    // Couleurs pour l'écran d'attente
+    final textColor = hasRemoteVideo ? Colors.white : (isDark ? Colors.white : Colors.black87);
+    final subTextColor = hasRemoteVideo ? Colors.white70 : (isDark ? Colors.white70 : Colors.black54);
+
+    // Contrôles
+    final controlBg = isDark ? const Color(0xFF1C1C1F) : Colors.white;
+    final controlBorder = isDark ? Colors.white24 : Colors.black12;
+    final controlIcon = isDark ? Colors.white : Colors.black;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       body: Stack(
         children: [
           // VIDÉO DISTANTE (plein écran)
-          if (_isOtherUserJoined && _remoteViewController != null)
+          if (hasRemoteVideo)
             Positioned.fill(
               child: AgoraVideoView(controller: _remoteViewController!),
             )
@@ -282,17 +304,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 children: [
                   CircleAvatar(
                     radius: 60,
-                    backgroundImage: widget.otherUserAvatar != null 
-                        ? NetworkImage(widget.otherUserAvatar!) 
+                    backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                    backgroundImage: widget.otherUserAvatar != null
+                        ? NetworkImage(widget.otherUserAvatar!)
                         : null,
-                    child: widget.otherUserAvatar == null 
-                        ? const Icon(Icons.person, color: Colors.white, size: 60) 
+                    child: widget.otherUserAvatar == null
+                        ? Icon(Icons.person, color: textColor, size: 60)
                         : null,
                   ),
                   const SizedBox(height: 16),
                   Text(
                     _isOtherUserJoined ? _formatDuration(_callDuration) : 'Appel en cours...',
-                    style: const TextStyle(color: Colors.white70, fontSize: 18),
+                    style: TextStyle(color: subTextColor, fontSize: 18),
                   ),
                 ],
               ),
@@ -307,10 +330,19 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 width: 100,
                 height: 140,
                 decoration: BoxDecoration(
+                  // Le cadre de la caméra reste sombre (contient la vidéo)
                   color: Colors.grey.shade900,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10)],
+                  border: Border.all(
+                    color: isDark ? Colors.white : Colors.black,
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: 10,
+                    ),
+                  ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
@@ -333,6 +365,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     setState(() => _isMuted = !_isMuted);
                     _engine?.muteLocalAudioStream(_isMuted);
                   },
+                  bgColor: controlBg,
+                  borderColor: controlBorder,
+                  iconColor: controlIcon,
                 ),
                 const SizedBox(width: 24),
                 _buildControlButton(
@@ -341,8 +376,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     setState(() => _isCameraOff = !_isCameraOff);
                     _engine?.enableLocalVideo(!_isCameraOff);
                   },
+                  bgColor: controlBg,
+                  borderColor: controlBorder,
+                  iconColor: controlIcon,
                 ),
                 const SizedBox(width: 24),
+                // Bouton raccrocher reste ROUGE (action critique, convention universelle)
                 GestureDetector(
                   onTap: _leaveChannel,
                   child: Container(
@@ -360,18 +399,24 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     );
   }
 
-  Widget _buildControlButton({required IconData icon, required VoidCallback onTap}) {
+  Widget _buildControlButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required Color bgColor,
+    required Color borderColor,
+    required Color iconColor,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 64,
         height: 64,
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1F),
+          color: bgColor,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white24, width: 2),
+          border: Border.all(color: borderColor, width: 2),
         ),
-        child: Icon(icon, color: Colors.white, size: 32),
+        child: Icon(icon, color: iconColor, size: 32),
       ),
     );
   }

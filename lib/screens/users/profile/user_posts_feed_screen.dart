@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
+import '../../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 
 class UserPostsFeedScreen extends StatefulWidget {
   final List<dynamic> posts;
@@ -27,7 +28,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
   late List<int> _likesCountList;
   late List<int> _commentsCountList;
 
-  // ✅ Stockage des contrôleurs vidéo par postId
   final Map<String, VideoPlayerController> _videoControllers = {};
 
   @override
@@ -144,13 +144,21 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     }
   }
 
-  void _openComments(BuildContext context, String postId, int index) {
+  void _openComments(BuildContext context, String postId, int index, bool isDark) {
     final TextEditingController commentController = TextEditingController();
+
+    final sheetBg = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final inputBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final handleColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
+    final dividerColor = isDark ? Colors.grey : Colors.grey.shade300;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.black,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -165,13 +173,19 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
               ),
               child: Column(
                 children: [
-                  Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(10))),
+                  Container(
+                    width: 40, height: 5,
+                    decoration: BoxDecoration(
+                      color: handleColor,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     "Commentaires (${_commentsCountList[index]})",
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                  const Divider(color: Colors.grey, height: 20),
+                  Divider(color: dividerColor, height: 20),
                   Expanded(
                     child: FutureBuilder<List<dynamic>>(
                       future: _supabase
@@ -181,11 +195,14 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                           .order('created_at', ascending: true),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+                          return Center(child: CircularProgressIndicator(color: accentColor));
                         }
                         if (snapshot.hasError || snapshot.data == null || snapshot.data!.isEmpty) {
-                          return const Center(
-                            child: Text("Aucun commentaire. Soyez le premier !", style: TextStyle(color: Colors.grey)),
+                          return Center(
+                            child: Text(
+                              "Aucun commentaire. Soyez le premier !",
+                              style: TextStyle(color: subTextColor),
+                            ),
                           );
                         }
 
@@ -213,12 +230,12 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                                       children: [
                                         Text(
                                           profile?['username'] ?? 'Anonyme',
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
                                           comment['content'] ?? '',
-                                          style: const TextStyle(color: Colors.white70, fontSize: 14),
+                                          style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 14),
                                         ),
                                       ],
                                     ),
@@ -231,7 +248,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                       },
                     ),
                   ),
-                  const Divider(color: Colors.grey, height: 1),
+                  Divider(color: dividerColor, height: 1),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Row(
@@ -239,22 +256,23 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                         Expanded(
                           child: TextField(
                             controller: commentController,
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: textColor),
                             decoration: InputDecoration(
                               hintText: "Ajouter un commentaire...",
-                              hintStyle: const TextStyle(color: Colors.white54),
+                              hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black38),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(24),
                                 borderSide: BorderSide.none,
                               ),
                               filled: true,
-                              fillColor: const Color(0xFF1A1A1A),
+                              fillColor: inputBg,
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                             ),
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.send, color: Color(0xFF8B5CF6)),
+                          // ✅ Bouton send : noir en clair / blanc en sombre
+                          icon: Icon(Icons.send, color: accentColor),
                           onPressed: () async {
                             final user = _supabase.auth.currentUser;
                             if (user == null || commentController.text.trim().isEmpty) return;
@@ -287,44 +305,49 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     );
   }
 
-  // ─── WIDGET MÉDIA (CORRIGÉ ET BLINDÉ) ──────────────
-  Widget _buildMediaWidget(int index) {
+  // ─── WIDGET MÉDIA ──────────────
+  Widget _buildMediaWidget(int index, bool isDark) {
     final post = widget.posts[index];
     final postId = post['id']?.toString() ?? '';
     final mediaType = (post['media_type']?.toString() ?? 'image').toLowerCase();
     final mediaUrl = post['media_url']?.toString();
-    
-    // ✅ Extraction robuste du texte (vérifie toutes les clés possibles)
+
     final caption = (post['content'] ?? post['caption'] ?? post['text'] ?? post['description'] ?? '').toString().trim();
     final backgroundColorHex = post['background_color']?.toString();
 
-    // 🔍 DEBUG : Regarde ta console pour voir EXACTEMENT ce que reçoit ce widget
     debugPrint('🔍 POST $index -> mediaType: "$mediaType" | caption: "$caption" | bgColor: "$backgroundColorHex"');
 
-    // ─── TEXTE ──────────────────────────────────────────────
+    // ─── TEXTE ───
     if (mediaType == 'text') {
       Color getBgColor() {
-        if (backgroundColorHex == null || backgroundColorHex.isEmpty) return Colors.grey.shade800;
+        if (backgroundColorHex == null || backgroundColorHex.isEmpty) {
+          return isDark ? Colors.grey.shade800 : Colors.grey.shade200;
+        }
         try {
-          String hex = backgroundColorHex.startsWith('#') 
-              ? backgroundColorHex.replaceAll('#', '0xFF') 
+          String hex = backgroundColorHex.startsWith('#')
+              ? backgroundColorHex.replaceAll('#', '0xFF')
               : '0xFF$backgroundColorHex';
           return Color(int.parse(hex));
         } catch (e) {
-          return Colors.grey.shade800;
+          return isDark ? Colors.grey.shade800 : Colors.grey.shade200;
         }
       }
-      
+
       return Container(
         color: getBgColor(),
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(32.0),
             child: Text(
-              caption.isEmpty 
-                  ? '⚠️ AUCUN TEXTE TROUVÉ\n\nVérifiez que la requête SQL de l\'écran précédent inclut bien les colonnes "content", "caption" ou "description" !' 
+              caption.isEmpty
+                  ? '⚠️ AUCUN TEXTE TROUVÉ\n\nVérifiez que la requête SQL de l\'écran précédent inclut bien les colonnes "content", "caption" ou "description" !'
                   : caption,
-              style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600, height: 1.4),
+              style: TextStyle(
+                color: isDark ? Colors.white : Colors.black87,
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+              ),
               textAlign: TextAlign.center,
             ),
           ),
@@ -332,39 +355,49 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
       );
     }
 
-    // ─── VIDÉO ──────────────────────────────────────────────
+    // ─── VIDÉO ───
     if (mediaType == 'video' && mediaUrl != null && mediaUrl.isNotEmpty) {
       return _PostVideoPlayer(
         mediaUrl: mediaUrl,
         postId: postId,
         onControllerReady: _onVideoControllerReady,
+        isDark: isDark,
       );
     }
 
-    // ─── IMAGE ──────────────────────────────────────────────
+    // ─── IMAGE ───
     if (mediaUrl != null && mediaUrl.isNotEmpty) {
       return Image.network(
         mediaUrl,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => Container(
-          color: Colors.grey.shade900,
-          child: const Center(child: Icon(Icons.image_not_supported, color: Colors.white54, size: 50)),
+          color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
+          child: Icon(Icons.image_not_supported,
+              color: isDark ? Colors.white54 : Colors.black38, size: 50),
         ),
       );
     }
 
-    // ─── FALLBACK ULTIME ─────────────────────────────────────
+    // ─── FALLBACK ───
     return Container(
-      color: Colors.grey.shade900,
+      color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 50),
             const SizedBox(height: 16),
-            const Text('Type de média non reconnu ou URL manquante', style: TextStyle(color: Colors.white, fontSize: 16), textAlign: TextAlign.center),
+            Text(
+              'Type de média non reconnu ou URL manquante',
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 8),
-            Text('Type: $mediaType\nURL: $mediaUrl', style: const TextStyle(color: Colors.grey, fontSize: 12), textAlign: TextAlign.center),
+            Text(
+              'Type: $mediaType\nURL: $mediaUrl',
+              style: TextStyle(color: isDark ? Colors.grey : Colors.black54, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
@@ -374,6 +407,18 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
   // ─── BUILD ──────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    // ⚠️ Le feed vidéo garde ses overlays sombres pour la lisibilité
+    // ✅ Mais le dégradé/chrome s'adapte
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -391,13 +436,13 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  // ─── 1. MÉDIA (image, texte, vidéo sans barre) ──
+                  // ─── 1. MÉDIA ──
                   GestureDetector(
                     onDoubleTap: () => _handleDoubleTap(index, postId),
-                    child: _buildMediaWidget(index),
+                    child: _buildMediaWidget(index, isDark),
                   ),
 
-                  // ─── 2. DÉGRADÉ ──────────────────────────────
+                  // ─── 2. DÉGRADÉ ──
                   if (mediaType != 'text')
                     IgnorePointer(
                       child: Container(
@@ -412,7 +457,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                       ),
                     ),
 
-                  // ─── 3. INFOS BAS GAUCHE ────────────────────
+                  // ─── 3. INFOS BAS GAUCHE ──
                   Positioned(
                     left: 16,
                     bottom: 100,
@@ -422,18 +467,28 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
+                          ),
                         ),
                         const SizedBox(height: 8),
+                        // ✅ Hashtag : plus de violet → gris clair sur fond sombre
                         const Text(
                           "#artlife #creative #posts",
-                          style: TextStyle(color: Colors.purpleAccent, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.bold,
+                            shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
+                          ),
                         ),
                       ],
                     ),
                   ),
 
-                  // ─── 4. BOUTONS DROITE ──────────────────────
+                  // ─── 4. BOUTONS DROITE ──
                   Positioned(
                     right: 16,
                     bottom: 120,
@@ -441,7 +496,8 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                       children: [
                         _buildActionButton(
                           icon: _isLikedList[index] ? Icons.favorite : Icons.favorite_border,
-                          iconColor: _isLikedList[index] ? Colors.purpleAccent : Colors.white,
+                          // ✅ Like actif : rouge (convention universelle)
+                          iconColor: _isLikedList[index] ? Colors.redAccent : Colors.white,
                           label: _likesCountList[index].toString(),
                           onTap: () => _toggleLike(index, postId),
                         ),
@@ -450,12 +506,13 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                           icon: Icons.chat_bubble_outline,
                           iconColor: Colors.white,
                           label: _commentsCountList[index].toString(),
-                          onTap: () => _openComments(context, postId, index),
+                          onTap: () => _openComments(context, postId, index, isDark),
                         ),
                         const SizedBox(height: 20),
                         _buildActionButton(
                           icon: _isSavedList[index] ? Icons.bookmark : Icons.bookmark_border,
-                          iconColor: _isSavedList[index] ? Colors.purpleAccent : Colors.white,
+                          // ✅ Save actif : blanc (au lieu de violet)
+                          iconColor: _isSavedList[index] ? Colors.white : Colors.white,
                           label: _isSavedList[index] ? "Sauvé" : "Sauver",
                           onTap: () {
                             // À implémenter
@@ -472,7 +529,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                     ),
                   ),
 
-                  // ─── 5. BARRE DE CONTRÔLE VIDÉO (EN DERNIER) ──
+                  // ─── 5. BARRE DE CONTRÔLE VIDÉO ──
                   if (mediaType == 'video' && _videoControllers.containsKey(postId))
                     Positioned(
                       left: 0,
@@ -485,7 +542,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
             },
           ),
 
-          // ─── BOUTON RETOUR ──────────────────────────────────
+          // ─── BOUTON RETOUR ──
           Positioned(
             top: 50,
             left: 16,
@@ -515,7 +572,15 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
         children: [
           Icon(icon, color: iconColor, size: 35),
           const SizedBox(height: 4),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(0, 1))],
+            ),
+          ),
         ],
       ),
     );
@@ -523,17 +588,19 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  WIDGET LECTEUR VIDÉO (UNIQUEMENT LA VIDÉO, SANS BARRE)
+//  LECTEUR VIDÉO
 // ═══════════════════════════════════════════════════════════════════
 class _PostVideoPlayer extends StatefulWidget {
   final String mediaUrl;
   final String postId;
   final void Function(VideoPlayerController, String)? onControllerReady;
+  final bool isDark;
 
   const _PostVideoPlayer({
     required this.mediaUrl,
     required this.postId,
     this.onControllerReady,
+    this.isDark = true,
   });
 
   @override
@@ -573,7 +640,10 @@ class _PostVideoPlayerState extends State<_PostVideoPlayer> {
   @override
   Widget build(BuildContext context) {
     if (!_initialized || _controller == null) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+      return Center(
+        // ✅ Loader noir/blanc adaptatif
+        child: CircularProgressIndicator(color: widget.isDark ? Colors.white : Colors.black),
+      );
     }
     return AspectRatio(
       aspectRatio: _controller!.value.aspectRatio,
@@ -583,7 +653,7 @@ class _PostVideoPlayerState extends State<_PostVideoPlayer> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  WIDGET BARRE DE CONTRÔLE VIDÉO (AVEC MUTE ET VITESSE)
+//  BARRE DE CONTRÔLE VIDÉO
 // ═══════════════════════════════════════════════════════════════════
 class _VideoControlsBar extends StatefulWidget {
   final VideoPlayerController controller;
@@ -655,6 +725,7 @@ class _VideoControlsBarState extends State<_VideoControlsBar> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ La barre reste blanche (au-dessus de la vidéo)
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(

@@ -7,8 +7,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
 import 'post_selection_screen.dart';
 import 'ai_creation_screen.dart';
-import 'text_post_screen.dart'; // ✅ NOUVEL ÉCRAN POUR LE TEXTE
+import 'text_post_screen.dart';
 import 'package:audioplayers/audioplayers.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -28,7 +29,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   int _recordingSeconds = 0;
 
   final ImagePicker _imagePicker = ImagePicker();
-  
+
   final List<Map<String, String>> _availableSounds = [
     {'title': 'Amapiano Vibes', 'artist': 'DJ Maphorisa', 'url': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
     {'title': 'Afrobeat Fire', 'artist': 'Burna Boy', 'url': 'https://example.com/sound2.mp3'},
@@ -36,7 +37,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     {'title': 'Afro Trap', 'artist': 'MHD', 'url': 'https://example.com/sound4.mp3'},
     {'title': 'Gqom Beat', 'artist': 'Babes Wodumo', 'url': 'https://example.com/sound5.mp3'},
   ];
-  
+
   final AudioPlayer _audioPlayer = AudioPlayer();
   Map<String, String>? _selectedSound;
 
@@ -69,7 +70,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     );
 
     await _controller!.initialize();
-    
+
     if (mounted) {
       setState(() => _isCameraInitialized = true);
     }
@@ -82,7 +83,6 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     );
   }
 
-  // ✅ OUVRIR L'ÉDITEUR DE TEXTE
   void _openTextEditor() {
     Navigator.push(
       context,
@@ -90,101 +90,102 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     );
   }
 
-  // ✅ FONCTION POUR OUVRIR LA GALERIE (PHOTO OU VIDÉO)
-  Future<void> _openGallery() async {
+  // ✅ FONCTION POUR OUVRIR LA GALERIE (avec thème)
+  Future<void> _openGallery(bool isDark) async {
+    final sheetBg = isDark ? Colors.grey.shade900 : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final handleColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
+    final dividerColor = isDark ? Colors.white10 : Colors.black12;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.grey.shade900,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (bottomSheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 10),
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(2))),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: handleColor, borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 20),
-            
-            // 1. ✅ PUBLIER DU TEXTE
+
+            // 1. Publier du texte
             ListTile(
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(color: Colors.blue.shade700, borderRadius: BorderRadius.circular(8)),
                 child: const Icon(Icons.text_fields, color: Colors.white),
               ),
-              title: const Text('Publier du texte', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-              subtitle: const Text('Partagez vos pensées', style: TextStyle(color: Colors.grey)),
+              title: Text('Publier du texte',
+                  style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold)),
+              subtitle: Text('Partagez vos pensées', style: TextStyle(color: subTextColor)),
               onTap: () {
                 Navigator.pop(bottomSheetContext);
                 _openTextEditor();
               },
             ),
-            
-            const Divider(color: Colors.white10, height: 1),
-            
-            // 2. Choisir une Photo
+
+            Divider(color: dividerColor, height: 1),
+
+            // 2. Photo
             ListTile(
-              leading: const Icon(Icons.photo, color: Color(0xFF8B5CF6)),
-              title: const Text('Photo de la galerie', style: TextStyle(color: Colors.white, fontSize: 16)),
+              leading: Icon(Icons.photo, color: textColor),
+              title: Text('Photo de la galerie', style: TextStyle(color: textColor, fontSize: 16)),
               onTap: () async {
                 debugPrint('📸 [GALERIE] Ouverture du sélecteur de photo...');
                 final file = await _imagePicker.pickImage(source: ImageSource.gallery);
-                
+
                 if (file != null) {
-                  debugPrint('✅ [GALERIE] Photo sélectionnée avec succès: ${file.path}');
-                  Navigator.pop(bottomSheetContext); 
+                  debugPrint('✅ [GALERIE] Photo sélectionnée: ${file.path}');
+                  if (bottomSheetContext.mounted) Navigator.pop(bottomSheetContext);
                   Future.delayed(const Duration(milliseconds: 100), () {
                     if (mounted) {
-                      debugPrint(' [GALERIE] Navigation vers PostSelectionScreen...');
                       Navigator.push(
-                        context, 
+                        context,
                         MaterialPageRoute(
                           builder: (context) => PostSelectionScreen(
-                            mediaPath: file.path ?? 'web_image_${DateTime.now().millisecondsSinceEpoch}', 
-                            mediaType: 'photo', 
+                            mediaPath: file.path ?? 'web_image_${DateTime.now().millisecondsSinceEpoch}',
+                            mediaType: 'photo',
                             xFile: file,
                             selectedSound: _selectedSound,
-                          )
-                        )
+                          ),
+                        ),
                       );
                     }
                   });
-                } else {
-                  debugPrint('⚠️ [GALERIE] Sélection de photo annulée par l\'utilisateur.');
                 }
               },
             ),
-            
+
             const SizedBox(height: 10),
-            
-            // 3. Choisir une Vidéo
+
+            // 3. Vidéo
             ListTile(
-              leading: const Icon(Icons.video_library, color: Color(0xFF8B5CF6)),
-              title: const Text('Vidéo de la galerie', style: TextStyle(color: Colors.white, fontSize: 16)),
+              leading: Icon(Icons.video_library, color: textColor),
+              title: Text('Vidéo de la galerie', style: TextStyle(color: textColor, fontSize: 16)),
               onTap: () async {
-                debugPrint(' [GALERIE] Ouverture du sélecteur de vidéo...');
+                debugPrint('🎥 [GALERIE] Ouverture du sélecteur de vidéo...');
                 final file = await _imagePicker.pickVideo(source: ImageSource.gallery);
-                
+
                 if (file != null) {
-                  debugPrint('✅ [GALERIE] Vidéo sélectionnée avec succès: ${file.path}');
-                  Navigator.pop(bottomSheetContext); 
+                  debugPrint('✅ [GALERIE] Vidéo sélectionnée: ${file.path}');
+                  if (bottomSheetContext.mounted) Navigator.pop(bottomSheetContext);
                   Future.delayed(const Duration(milliseconds: 100), () {
                     if (mounted) {
-                      debugPrint('🚀 [GALERIE] Navigation vers PostSelectionScreen...');
                       Navigator.push(
-                        context, 
+                        context,
                         MaterialPageRoute(
                           builder: (context) => PostSelectionScreen(
-                            mediaPath: file.path ?? 'web_video_${DateTime.now().millisecondsSinceEpoch}', 
-                            mediaType: 'video', 
+                            mediaPath: file.path ?? 'web_video_${DateTime.now().millisecondsSinceEpoch}',
+                            mediaType: 'video',
                             xFile: file,
                             selectedSound: _selectedSound,
-                          )
-                        )
+                          ),
+                        ),
                       );
                     }
                   });
-                } else {
-                  debugPrint('️ [GALERIE] Sélection de vidéo annulée par l\'utilisateur.');
                 }
               },
             ),
@@ -195,10 +196,15 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     );
   }
 
-  void _showMusicSelectionSheet() {
+  void _showMusicSelectionSheet(bool isDark) {
+    final sheetBg = isDark ? Colors.grey.shade900 : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final handleColor = isDark ? Colors.grey.shade700 : Colors.grey.shade400;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.grey.shade900,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -211,34 +217,31 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               Container(
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade700,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                decoration: BoxDecoration(color: handleColor, borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 '🎵 Choisir un son',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
-              
-              ...(_availableSounds ?? []).map((sound) {
+
+              ..._availableSounds.map((sound) {
                 return ListTile(
-                  leading: const Icon(Icons.music_note, color: Color(0xFF8B5CF6)),
-                  title: Text(sound['title']!, style: const TextStyle(color: Colors.white)),
-                  subtitle: Text(sound['artist']!, style: const TextStyle(color: Colors.grey)),
+                  leading: Icon(Icons.music_note, color: textColor),
+                  title: Text(sound['title']!, style: TextStyle(color: textColor)),
+                  subtitle: Text(sound['artist']!, style: TextStyle(color: subTextColor)),
                   onTap: () async {
                     await _audioPlayer.stop();
                     await _audioPlayer.play(UrlSource(sound['url']!));
                     setState(() => _selectedSound = sound);
-                    Navigator.pop(context); 
+                    if (context.mounted) Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('🎵 Lecture de : ${sound['title']}')),
                     );
                   },
                 );
-              }).toList(),
+              }),
               const SizedBox(height: 20),
             ],
           ),
@@ -249,7 +252,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
   Future<void> _simulateCaptureWeb(String type) async {
     try {
-      final XFile? file = type == 'photo' 
+      final XFile? file = type == 'photo'
           ? await _imagePicker.pickImage(source: ImageSource.gallery)
           : await _imagePicker.pickVideo(source: ImageSource.gallery);
 
@@ -271,14 +274,18 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   }
 
   void _showPermissionDialog() {
+    final isDark = themeNotifier.value == ThemeMode.dark;
+    final dialogBg = isDark ? Colors.grey.shade900 : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey.shade900,
-        title: const Text('Permission requise', style: TextStyle(color: Colors.white)),
-        content: const Text(
+        backgroundColor: dialogBg,
+        title: Text('Permission requise', style: TextStyle(color: textColor)),
+        content: Text(
           'Afrifan a besoin d\'accéder à la caméra.',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
         ),
         actions: [
           TextButton(
@@ -290,7 +297,10 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               Navigator.pop(context);
               await openAppSettings();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isDark ? Colors.white : Colors.black,
+              foregroundColor: isDark ? Colors.black : Colors.white,
+            ),
             child: const Text('Paramètres'),
           ),
         ],
@@ -394,108 +404,149 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    // ✅ ÉCOUTE DU THÈME
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    // ⚠️ La caméra reste sur fond noir (c'est la preview), mais les boutons et sheets s'adaptent
+    // Les overlays sur la caméra restent sombres pour la lisibilité
+
     // ==========================================================
     //  MODE WEB
     // ==========================================================
     if (kIsWeb) {
+      // En mode clair, on inverse le gradient
+      final gradientColors = isDark
+          ? [const Color(0xFF8B5CF6), const Color(0xFF4A148C), Colors.black]
+          : [const Color(0xFFE5E7EB), const Color(0xFFF3F4F6), Colors.white];
+
+      final iconColor = isDark ? Colors.white24 : Colors.black12;
+      final textColor = isDark ? Colors.white38 : Colors.black26;
+
       return Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: isDark ? Colors.black : Colors.white,
         body: Stack(
           children: [
             Positioned.fill(
               child: Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF8B5CF6),
-                      Color(0xFF4A148C),
-                      Colors.black,
-                    ],
+                    colors: gradientColors,
                   ),
                 ),
-                child: const Center(
+                child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.camera_enhance, size: 100, color: Colors.white24),
-                      SizedBox(height: 16),
-                      Text('Mode Test Web', style: TextStyle(color: Colors.white38, fontSize: 24, fontWeight: FontWeight.bold)),
+                      Icon(Icons.camera_enhance, size: 100, color: iconColor),
+                      const SizedBox(height: 16),
+                      Text('Mode Test Web',
+                          style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
               ),
             ),
+
+            // Overlay gradient (assombrit pour lisibilité) - toujours présent
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                    colors: [Colors.black.withOpacity(0.4), Colors.transparent, Colors.transparent, Colors.black.withOpacity(0.6)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(isDark ? 0.4 : 0.1),
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black.withOpacity(isDark ? 0.6 : 0.3),
+                    ],
                   ),
                 ),
               ),
             ),
+
             Positioned(
               right: 16, top: MediaQuery.of(context).padding.top + 20, bottom: 120,
               child: Column(
                 children: [
-                  _buildToolButton(icon: Icons.flash_off, onTap: () {}),
+                  _buildToolButton(icon: Icons.flash_off, onTap: () {}, isDark: isDark),
                   const SizedBox(height: 16),
-                  _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionSheet),
+                  _buildToolButton(icon: Icons.music_note_outlined, onTap: () => _showMusicSelectionSheet(isDark), isDark: isDark),
                   const SizedBox(height: 16),
-                  _buildToolButton(icon: Icons.grid_off, onTap: () {}),
+                  _buildToolButton(icon: Icons.grid_off, onTap: () {}, isDark: isDark),
                 ],
               ),
             ),
+
             Positioned(
               left: 0, right: 0, bottom: 30,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // ✅ BOUTON GALERIE (inclut maintenant Texte)
                   GestureDetector(
-                    onTap: _openGallery,
+                    onTap: () => _openGallery(isDark),
                     child: Container(
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.grey.shade900.withOpacity(0.8), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: const Icon(Icons.photo_library, color: Colors.white, size: 28),
                     ),
                   ),
-                  // BOUTON IA
                   GestureDetector(
                     onTap: _openAIScreen,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(color: Colors.grey.shade900.withOpacity(0.8), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: const Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 28),
+                          Icon(Icons.auto_awesome, color: Colors.white, size: 28),
                           SizedBox(height: 2),
                           Text('IA', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
                   ),
-                  // BOUTON CAPTURE
                   GestureDetector(
                     onTap: () => _simulateCaptureWeb('photo'),
                     child: Container(
                       width: 80, height: 80,
-                      decoration: BoxDecoration(color: Colors.transparent, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 4)),
-                      child: Container(margin: const EdgeInsets.all(8.0), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 4),
+                      ),
+                      child: Container(
+                        margin: const EdgeInsets.all(8.0),
+                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      ),
                     ),
                   ),
-                  // FLIP CAMÉRA
                   GestureDetector(
-                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Disponible sur mobile uniquement'), backgroundColor: Color(0xFF8B5CF6))),
+                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Disponible sur mobile uniquement')),
+                    ),
                     child: Container(
                       width: 50, height: 50,
-                      decoration: const BoxDecoration(color: Color(0xFF8B5CF6), shape: BoxShape.circle),
-                      child: const Icon(Icons.flip_camera_ios, color: Colors.white, size: 28),
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      child: Icon(Icons.flip_camera_ios,
+                          color: isDark ? Colors.black : Colors.black, size: 28),
                     ),
                   ),
                 ],
@@ -510,34 +561,67 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     // 📱 MODE MOBILE
     // ==========================================================
     if (!_isCameraInitialized) {
-      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6))));
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: const Center(child: CircularProgressIndicator(color: Colors.white)),
+      );
     }
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(child: _controller!.value.isInitialized ? CameraPreview(_controller!) : Container(color: Colors.black)),
+          Positioned.fill(
+            child: _controller!.value.isInitialized
+                ? CameraPreview(_controller!)
+                : Container(color: Colors.black),
+          ),
+
           if (_showGrid) Positioned.fill(child: CustomPaint(painter: GridPainter())),
+
+          // Overlay sombre sur la caméra (toujours sombre pour la lisibilité)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black.withOpacity(0.4), Colors.transparent, Colors.transparent, Colors.black.withOpacity(0.6)]),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.4),
+                    Colors.transparent,
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.6),
+                  ],
+                ),
               ),
             ),
           ),
+
           Positioned(
             right: 16, top: MediaQuery.of(context).padding.top + 20, bottom: 120,
             child: Column(
               children: [
-                _buildToolButton(icon: _flashMode == FlashMode.always ? Icons.flash_on : Icons.flash_off, onTap: _toggleFlash),
+                _buildToolButton(
+                  icon: _flashMode == FlashMode.always ? Icons.flash_on : Icons.flash_off,
+                  onTap: _toggleFlash,
+                  isDark: isDark,
+                ),
                 const SizedBox(height: 16),
-                _buildToolButton(icon: Icons.music_note_outlined, onTap: _showMusicSelectionSheet),
+                _buildToolButton(
+                  icon: Icons.music_note_outlined,
+                  onTap: () => _showMusicSelectionSheet(isDark),
+                  isDark: isDark,
+                ),
                 const SizedBox(height: 16),
-                _buildToolButton(icon: _showGrid ? Icons.grid_on : Icons.grid_off, onTap: _toggleGrid),
+                _buildToolButton(
+                  icon: _showGrid ? Icons.grid_on : Icons.grid_off,
+                  onTap: _toggleGrid,
+                  isDark: isDark,
+                ),
               ],
             ),
           ),
+
           if (_selectedSound != null)
             Positioned(
               bottom: 110,
@@ -546,12 +630,12 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade900.withOpacity(0.9),
+                  color: Colors.black.withOpacity(0.75),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.music_note, color: Color(0xFF8B5CF6), size: 20),
+                    const Icon(Icons.music_note, color: Colors.white, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -571,38 +655,42 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                 ),
               ),
             ),
+
           Positioned(
             left: 0, right: 0, bottom: 30,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ✅ BOUTON GALERIE (inclut Texte, Photo, Vidéo)
                 GestureDetector(
-                  onTap: _openGallery,
+                  onTap: () => _openGallery(isDark),
                   child: Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.grey.shade900.withOpacity(0.8), borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: const Icon(Icons.photo_library, color: Colors.white, size: 28),
                   ),
                 ),
-                // BOUTON IA
                 GestureDetector(
                   onTap: _openAIScreen,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.grey.shade900.withOpacity(0.8), borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: const Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 28),
+                        Icon(Icons.auto_awesome, color: Colors.white, size: 28),
                         SizedBox(height: 2),
                         Text('IA', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
                 ),
-                // BOUTON CAPTURE
                 GestureDetector(
                   onTapDown: _isRecordingVideo ? null : (_) => _startRecording(),
                   onTapUp: _isRecordingVideo ? (_) => _stopRecording() : null,
@@ -610,41 +698,73 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                   onTap: _isRecordingVideo ? null : _takePhoto,
                   child: Container(
                     width: 80, height: 80,
-                    decoration: BoxDecoration(color: Colors.transparent, shape: BoxShape.circle, border: Border.all(color: _isRecordingVideo ? Colors.red : Colors.white, width: 4)),
+                    decoration: BoxDecoration(
+                      color: Colors.transparent,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: _isRecordingVideo ? Colors.red : Colors.white, width: 4),
+                    ),
                     child: Container(
                       margin: EdgeInsets.all(_isRecordingVideo ? 6.0 : 8.0),
-                      decoration: BoxDecoration(color: _isRecordingVideo ? Colors.red : Colors.white, shape: BoxShape.circle),
-                      child: _isRecordingVideo ? Center(child: Text('${_recordingSeconds}s', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))) : null,
+                      decoration: BoxDecoration(
+                        color: _isRecordingVideo ? Colors.red : Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: _isRecordingVideo
+                          ? Center(child: Text('${_recordingSeconds}s',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)))
+                          : null,
                     ),
                   ),
                 ),
-                // FLIP CAMÉRA
                 GestureDetector(
                   onTap: _toggleCamera,
-                  child: Container(width: 50, height: 50, decoration: const BoxDecoration(color: Color(0xFF8B5CF6), shape: BoxShape.circle), child: const Icon(Icons.flip_camera_ios, color: Colors.white, size: 28)),
+                  child: Container(
+                    width: 50, height: 50,
+                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                    child: const Icon(Icons.flip_camera_ios, color: Colors.black, size: 28),
+                  ),
                 ),
               ],
             ),
           ),
+
           if (_isRecordingVideo)
             Positioned(
               top: MediaQuery.of(context).padding.top + 20, left: 0, right: 0,
-              child: const Center(child: Text('ENREGISTREMENT', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 2))),
+              child: const Center(
+                child: Text(
+                  'ENREGISTREMENT',
+                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 2),
+                ),
+              ),
             ),
         ],
       ),
     );
   }
 
-  Widget _buildToolButton({required IconData icon, required VoidCallback onTap}) {
-    return GestureDetector(onTap: onTap, child: Container(width: 48, height: 48, decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: Colors.white, size: 24)));
+  Widget _buildToolButton({required IconData icon, required VoidCallback onTap, required bool isDark}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48, height: 48,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: Colors.white, size: 24),
+      ),
+    );
   }
 }
 
 class GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withOpacity(0.3)..strokeWidth = 1..style = PaintingStyle.stroke;
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.3)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
     canvas.drawLine(Offset(size.width / 3, 0), Offset(size.width / 3, size.height), paint);
     canvas.drawLine(Offset(size.width * 2 / 3, 0), Offset(size.width * 2 / 3, size.height), paint);
     canvas.drawLine(Offset(0, size.height / 3), Offset(size.width, size.height / 3), paint);

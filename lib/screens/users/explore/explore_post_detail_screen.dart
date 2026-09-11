@@ -1,12 +1,12 @@
 import 'dart:io';
-import 'dart:ui'; // Pour l'effet de flou
+import 'dart:ui';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
-import '../../../theme/app_colors.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 import '../../../widgets/tip_dialog.dart';
 import '../../../widgets/report_dialog.dart';
 import '../creator/creator_profile_screen.dart';
@@ -29,15 +29,14 @@ class ExplorePostDetailScreen extends StatefulWidget {
 class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
   late PageController _pageController;
   final supabase = Supabase.instance.client;
-  
+
   String? _currentUserId;
   String _currentUserName = 'Utilisateur';
   String? _currentUserAvatar;
-  
+
   Set<String> _likedPostIds = {};
   Set<String> _subscribedCreatorIds = {};
 
-  // ✅ Stockage du contrôleur vidéo pour le post courant
   VideoPlayerController? _currentVideoController;
   String? _currentVideoPostId;
 
@@ -105,12 +104,21 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
     } catch (e) { debugPrint('❌ Erreur like: $e'); }
   }
 
-  void _openComments(String postId, int postIndex) {
+  void _openComments(String postId, int postIndex, bool isDark) {
     final TextEditingController commentController = TextEditingController();
+
+    final sheetBg = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final cardBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final inputBg = isDark ? Colors.black : Colors.white;
+    final border = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.black,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
         return StatefulBuilder(
@@ -120,18 +128,37 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
               height: MediaQuery.of(context).size.height * 0.7,
               child: Column(
                 children: [
-                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(2))),
+                  Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                   const SizedBox(height: 20),
-                  const Text('Commentaires', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  Text('Commentaires', style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   Expanded(
                     child: FutureBuilder<List<Map<String, dynamic>>>(
                       future: supabase.from('comments').select().eq('post_id', postId).order('created_at', ascending: true),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return Center(child: CircularProgressIndicator(color: accentColor));
+                        }
                         final comments = snapshot.data ?? [];
                         if (comments.isEmpty) {
-                          return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey), SizedBox(height: 16), Text('Aucun commentaire', style: TextStyle(color: Colors.grey, fontSize: 16))]));
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.chat_bubble_outline, size: 60,
+                                    color: isDark ? Colors.grey : Colors.grey.shade400),
+                                const SizedBox(height: 16),
+                                Text('Aucun commentaire',
+                                    style: TextStyle(color: subTextColor, fontSize: 16)),
+                              ],
+                            ),
+                          );
                         }
                         return ListView.builder(
                           itemCount: comments.length,
@@ -140,13 +167,15 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                             return Container(
                               margin: const EdgeInsets.only(bottom: 16),
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)),
+                              decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(12)),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(comment['user_name'] ?? 'Utilisateur', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  Text(comment['user_name'] ?? 'Utilisateur',
+                                      style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
                                   const SizedBox(height: 6),
-                                  Text(comment['content'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4)),
+                                  Text(comment['content'] ?? '',
+                                      style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14, height: 1.4)),
                                 ],
                               ),
                             );
@@ -157,18 +186,28 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.grey.shade800)),
+                    decoration: BoxDecoration(
+                      color: inputBg,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: border),
+                    ),
                     child: Row(
                       children: [
                         Expanded(
                           child: TextField(
                             controller: commentController,
-                            style: const TextStyle(color: Colors.white, fontSize: 14),
-                            decoration: const InputDecoration(hintText: 'Ajouter un commentaire...', hintStyle: TextStyle(color: Colors.white54), border: InputBorder.none, filled: true, fillColor: Colors.black),
+                            style: TextStyle(color: textColor, fontSize: 14),
+                            decoration: InputDecoration(
+                              hintText: 'Ajouter un commentaire...',
+                              hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black38),
+                              border: InputBorder.none,
+                              filled: true,
+                              fillColor: inputBg,
+                            ),
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.send, color: AppColors.primary, size: 24),
+                          icon: Icon(Icons.send, color: accentColor, size: 24),
                           onPressed: () async {
                             final text = commentController.text.trim();
                             if (text.isEmpty) return;
@@ -202,7 +241,6 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
     return count.toString();
   }
 
-  // ✅ Callback pour recevoir le contrôleur depuis le widget vidéo
   void _onVideoControllerReady(VideoPlayerController controller, String postId) {
     setState(() {
       _currentVideoController = controller;
@@ -212,6 +250,20 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    // ✅ Accent noir/blanc selon thème
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: PageView.builder(
@@ -226,7 +278,7 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
           final mediaUrl = post['media_url'];
           final mediaType = post['media_type']?.toString() ?? 'image';
           final backgroundColorHex = post['background_color'];
-          
+
           final creatorName = post['profiles']?['username'] ?? 'Créateur';
           final creatorAvatar = post['profiles']?['avatar_url'];
           final likesCount = post['likes_count'] ?? 0;
@@ -274,6 +326,7 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                     isLocked: isLocked,
                     postId: postId,
                     onControllerReady: _onVideoControllerReady,
+                    isDark: isDark,
                   ),
                 )
               else
@@ -321,7 +374,15 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: const Icon(Icons.lock, color: Colors.white, size: 32)),
+                          // ✅ Cadenas neutre adaptatif
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: accentColor,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.lock, color: accentTextColor, size: 32),
+                          ),
                           const SizedBox(height: 12),
                           const Text('Contenu Exclusif', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
@@ -337,7 +398,14 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                 top: 40, left: 16,
                 child: GestureDetector(
                   onTap: () => Navigator.pop(context),
-                  child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.arrow_back, color: Colors.white)),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.arrow_back, color: Colors.white),
+                  ),
                 ),
               ),
 
@@ -349,20 +417,27 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                     children: [
                       _buildSideButton(isLiked ? Icons.favorite : Icons.favorite_border, _formatCount(likesCount), () => _handleLike(postId, likesCount, index), iconColor: isLiked ? Colors.redAccent : Colors.white),
                       const SizedBox(height: 18),
-                      _buildSideButton(Icons.chat_bubble_rounded, _formatCount(commentsCount), () => _openComments(postId, index)),
+                      _buildSideButton(Icons.chat_bubble_rounded, _formatCount(commentsCount), () => _openComments(postId, index, isDark)),
                       const SizedBox(height: 18),
                       _buildSideButton(Icons.local_cafe, 'Tip', () => showDialog(context: context, builder: (context) => TipDialog(creatorId: creatorId, creatorName: creatorName)), iconColor: Colors.orangeAccent),
                       const SizedBox(height: 18),
                       _buildSideButton(Icons.share, 'Partager', () => Share.share('Regarde ce post de @$creatorName sur Afrifan : $caption'), iconColor: Colors.white),
                       const SizedBox(height: 18),
                       PopupMenuButton<String>(
-                        color: const Color(0xFF1A1A1A),
+                        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
                         icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
                         onSelected: (value) {
                           if (value == 'report') showDialog(context: context, builder: (context) => ReportDialog(targetId: postId, targetType: 'post'));
                         },
                         itemBuilder: (context) => [
-                          const PopupMenuItem<String>(value: 'report', child: Row(children: [Icon(Icons.flag_outlined, color: Colors.redAccent, size: 20), SizedBox(width: 12), Text('Signaler', style: TextStyle(color: Colors.white))])),
+                          PopupMenuItem<String>(
+                            value: 'report',
+                            child: Row(children: [
+                              const Icon(Icons.flag_outlined, color: Colors.redAccent, size: 20),
+                              const SizedBox(width: 12),
+                              Text('Signaler', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                            ]),
+                          ),
                         ],
                       ),
                     ],
@@ -371,7 +446,7 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
 
               // ─── 6. INFOS EN BAS À GAUCHE ──────────────────────
               Positioned(
-                left: 16, right: 80, bottom: 80, // décalé pour ne pas chevaucher la barre
+                left: 16, right: 80, bottom: 80,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -392,7 +467,7 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
                 ),
               ),
 
-              // ─── 7. BARRE DE CONTRÔLE VIDÉO (EN DERNIER) ──────
+              // ─── 7. BARRE DE CONTRÔLE VIDÉO ──────
               if (mediaType == 'video' && _currentVideoPostId == postId && _currentVideoController != null)
                 Positioned(
                   left: 0,
@@ -418,7 +493,16 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
         child: Column(
           children: [
             Icon(icon, color: iconColor, size: 32),
-            if (label.isNotEmpty) ...[const SizedBox(height: 4), Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))],
+            if (label.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(0, 1))],
+                  )),
+            ],
           ],
         ),
       ),
@@ -427,13 +511,14 @@ class _ExplorePostDetailScreenState extends State<ExplorePostDetailScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  WIDGET LECTEUR VIDÉO (UNIQUEMENT LA VIDÉO, SANS BARRE DE CONTRÔLE)
+//  WIDGET LECTEUR VIDÉO
 // ═══════════════════════════════════════════════════════════════════
 class _DetailVideoPlayer extends StatefulWidget {
   final String? mediaUrl;
   final bool isLocked;
   final String postId;
   final void Function(VideoPlayerController, String)? onControllerReady;
+  final bool isDark;
 
   const _DetailVideoPlayer({
     Key? key,
@@ -441,6 +526,7 @@ class _DetailVideoPlayer extends StatefulWidget {
     required this.isLocked,
     required this.postId,
     this.onControllerReady,
+    this.isDark = true,
   }) : super(key: key);
 
   @override
@@ -468,7 +554,6 @@ class _DetailVideoPlayerState extends State<_DetailVideoPlayer> {
           _controller!.play();
           _controller!.setLooping(true);
         }
-        // On notifie le parent que le contrôleur est prêt
         widget.onControllerReady?.call(_controller!, widget.postId);
       }
     } catch (e) {
@@ -478,16 +563,18 @@ class _DetailVideoPlayerState extends State<_DetailVideoPlayer> {
 
   @override
   void dispose() {
-    // Ne pas dispose le contrôleur ici car il est géré par le parent
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     if (!_initialized || _controller == null) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+      return Center(
+        // ✅ Loader noir/blanc adaptatif
+        child: CircularProgressIndicator(color: widget.isDark ? Colors.white : Colors.black),
+      );
     }
-    
+
     return GestureDetector(
       onTap: () {
         if (widget.isLocked) return;
@@ -506,7 +593,7 @@ class _DetailVideoPlayerState extends State<_DetailVideoPlayer> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  WIDGET _VideoControls (BARRE DE CONTRÔLE AVEC GESTION DU CHARGEMENT ET VERROUILLAGE)
+//  WIDGET _VideoControls
 // ═══════════════════════════════════════════════════════════════════
 class _VideoControls extends StatefulWidget {
   final VideoPlayerController? controller;
@@ -616,7 +703,6 @@ class _VideoControlsState extends State<_VideoControls> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Play/Pause + Temps
               Row(
                 children: [
                   GestureDetector(
@@ -640,7 +726,6 @@ class _VideoControlsState extends State<_VideoControls> {
                   ),
                 ],
               ),
-              // Mute + Vitesse
               Row(
                 children: [
                   GestureDetector(

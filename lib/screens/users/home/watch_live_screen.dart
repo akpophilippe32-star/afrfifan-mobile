@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:agora_token_generator/agora_token_generator.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 
 class WatchLiveScreen extends StatefulWidget {
   final String liveId;
@@ -25,16 +26,15 @@ class WatchLiveScreen extends StatefulWidget {
 class _WatchLiveScreenState extends State<WatchLiveScreen> {
   RtcEngine? _engine;
   VideoViewController? _remoteViewController;
-  
+
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _messages = [];
   StreamSubscription? _chatSubscription;
-  
+
   final String appId = '18d7051c40f14cea8953b23824683c0b';
   int _viewerCount = 0;
 
-  // ✅ NOUVEAU : Infos de l'utilisateur connecté
   String _currentUserName = 'Fan';
   String? _currentUserAvatar;
 
@@ -42,18 +42,17 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
   void initState() {
     super.initState();
     debugPrint("📺 [WATCH] Ouverture du live avec ID: '${widget.liveId}'");
-    _loadCurrentUser(); // ✅ Chargement du vrai nom et avatar
+    _loadCurrentUser();
     _initAgoraAsAudience();
     _setupLiveChat();
     _updateViewerCount();
   }
 
-  // ✅ Charger le vrai nom et avatar de l'utilisateur connecté
-    Future<void> _loadCurrentUser() async {
+  Future<void> _loadCurrentUser() async {
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       debugPrint("🔍 [PROFIL] User ID: $userId");
-      
+
       if (userId == null) return;
 
       final profile = await Supabase.instance.client
@@ -77,19 +76,18 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
         debugPrint("❌ [PROFIL] Aucun profil trouvé pour cet utilisateur !");
       }
     } catch (e) {
-      debugPrint(" Erreur chargement profil: $e");
+      debugPrint("Erreur chargement profil: $e");
     }
   }
 
-  // ✅ 1. CONFIGURATION AGORA EN MODE SPECTATEUR (AUDIENCE)
   Future<void> _initAgoraAsAudience() async {
     debugPrint("🎥 [WATCH] Initialisation Agora pour le spectateur...");
-    
+
     try {
       _engine = createAgoraRtcEngine();
       await _engine!.initialize(RtcEngineContext(appId: appId));
       debugPrint("✅ [WATCH] Moteur initialisé");
-      
+
       await _engine!.setChannelProfile(ChannelProfileType.channelProfileLiveBroadcasting);
       await _engine!.setClientRole(role: ClientRoleType.clientRoleAudience);
       await _engine!.enableAudio();
@@ -130,8 +128,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
           tokenExpireSeconds: 3600,
         );
         debugPrint("✅ [WATCH] Token spectateur généré pour le canal: '${widget.liveId.trim()}'");
-      } catch (e) { 
-        debugPrint("❌ [WATCH] Erreur token spectateur: $e"); 
+      } catch (e) {
+        debugPrint("❌ [WATCH] Erreur token spectateur: $e");
       }
 
       await _engine!.joinChannel(
@@ -143,7 +141,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
           clientRoleType: ClientRoleType.clientRoleAudience,
         ),
       );
-      
+
       await _engine!.muteAllRemoteVideoStreams(false);
       debugPrint("✅ [WATCH] Rejoint le canal et flux vidéo débloqués !");
 
@@ -152,7 +150,6 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
     }
   }
 
-  // ✅ 2. GESTION DU CHAT EN DIRECT (SUPABASE REALTIME)
   void _setupLiveChat() {
     _chatSubscription = Supabase.instance.client
         .from('live_messages')
@@ -177,7 +174,6 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
     });
   }
 
-  // ✅ 3. ENVOYER UN MESSAGE (Avec le VRAI nom et avatar)
   Future<void> _sendMessage() async {
     if (_chatController.text.trim().isEmpty) return;
 
@@ -195,8 +191,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
       await Supabase.instance.client.from('live_messages').insert({
         'live_stream_id': widget.liveId,
         'user_id': currentUserId,
-        'user_name': _currentUserName,      // ✅ VRAI NOM
-        'user_avatar': _currentUserAvatar,  // ✅ VRAI AVATAR
+        'user_name': _currentUserName,
+        'user_avatar': _currentUserAvatar,
         'content': _chatController.text.trim(),
       });
       _chatController.clear();
@@ -205,7 +201,6 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
     }
   }
 
-  // ✅ 4. METTRE À JOUR LE COMPTEUR (Sécurisé)
   Future<void> _updateViewerCount() async {
     try {
       final response = await Supabase.instance.client
@@ -213,7 +208,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
           .select('viewer_count')
           .eq('id', widget.liveId)
           .limit(1);
-      
+
       if (mounted && response.isNotEmpty) {
         setState(() => _viewerCount = response[0]['viewer_count'] ?? 0);
       }
@@ -224,6 +219,21 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    // ⚠️ Le live vidéo reste sur fond noir (obligatoire pour la lisibilité de la vidéo)
+    // ✅ Les couleurs neutres deviennent noir/blanc selon le thème
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -232,7 +242,6 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
           if (_remoteViewController != null)
             Positioned.fill(child: AgoraVideoView(controller: _remoteViewController!))
           else
-            // ✅ FALLBACK : Affiche un message au lieu du loader infini (utile pour test Chrome)
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -246,11 +255,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                     Container(
                       width: 120,
                       height: 120,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF6366F1),
+                      decoration: BoxDecoration(
+                        // ✅ Fond neutre selon thème
+                        color: isDark ? Colors.white : Colors.black,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.person, color: Colors.white, size: 60),
+                      child: Icon(Icons.person,
+                          color: isDark ? Colors.black : Colors.white, size: 60),
                     ),
                   const SizedBox(height: 20),
                   Text(
@@ -305,11 +316,15 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: const BoxDecoration(color: Colors.red, borderRadius: BorderRadius.all(Radius.circular(4))),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.all(Radius.circular(4)),
+                      ),
                       child: const Row(children: [
                         Icon(Icons.circle, color: Colors.white, size: 10),
                         SizedBox(width: 5),
-                        Text("LIVE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        Text("LIVE",
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                       ]),
                     ),
                     const SizedBox(width: 10),
@@ -326,7 +341,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
             ),
           ),
 
-          // 3. OVERLAY INFÉRIEUR (Chat et Input)
+          // 3. OVERLAY INFÉRIEUR (Chat + Input)
           Positioned(
             bottom: 0,
             left: 0,
@@ -344,7 +359,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
+                  SizedBox(
                     height: 200,
                     child: ListView.builder(
                       controller: _scrollController,
@@ -353,7 +368,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                         final msg = _messages[index];
                         final msgUserName = msg['user_name'] ?? 'Fan';
                         final msgUserAvatar = msg['user_avatar'];
-                        
+
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Row(
@@ -365,10 +380,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                                   backgroundImage: NetworkImage(msgUserAvatar),
                                 )
                               else
-                                const CircleAvatar(
+                                CircleAvatar(
                                   radius: 14,
-                                  backgroundColor: Color(0xFF6366F1),
-                                  child: Icon(Icons.person, size: 14, color: Colors.white),
+                                  // ✅ Avatar neutre
+                                  backgroundColor: isDark ? Colors.white : Colors.black,
+                                  child: Icon(Icons.person,
+                                      size: 14,
+                                      color: isDark ? Colors.black : Colors.white),
                                 ),
                               const SizedBox(width: 8),
                               Expanded(
@@ -378,7 +396,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                                       TextSpan(
                                         text: "$msgUserName : ",
                                         style: const TextStyle(
-                                          color: Colors.white70, 
+                                          color: Colors.white70,
                                           fontWeight: FontWeight.bold,
                                           fontSize: 13,
                                         ),
@@ -398,7 +416,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  
+
                   if (widget.isSubscribed)
                     Row(
                       children: [
@@ -411,7 +429,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                               hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
                               filled: true,
                               fillColor: Colors.white.withOpacity(0.1),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                             ),
                             onSubmitted: (_) => _sendMessage(),
@@ -422,8 +441,12 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                           onTap: _sendMessage,
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: const BoxDecoration(color: Color(0xFF6366F1), shape: BoxShape.circle),
-                            child: const Icon(Icons.send, color: Colors.white, size: 20),
+                            decoration: BoxDecoration(
+                              // ✅ Bouton neutre adaptatif
+                              color: accentColor,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.send, color: accentTextColor, size: 20),
                           ),
                         ),
                       ],
@@ -438,12 +461,16 @@ class _WatchLiveScreenState extends State<WatchLiveScreen> {
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF6366F1),
-                          borderRadius: BorderRadius.all(Radius.circular(20)),
+                        decoration: BoxDecoration(
+                          // ✅ Bouton neutre adaptatif
+                          color: accentColor,
+                          borderRadius: const BorderRadius.all(Radius.circular(20)),
                         ),
-                        child: const Center(
-                          child: Text("💎 Abonne-toi pour participer au chat", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        child: Center(
+                          child: Text(
+                            "💎 Abonne-toi pour participer au chat",
+                            style: TextStyle(color: accentTextColor, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
                     ),

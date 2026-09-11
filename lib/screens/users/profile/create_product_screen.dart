@@ -1,9 +1,10 @@
 import 'dart:io';
-import 'dart:typed_data'; // ✅ Ajouté pour les bytes (Web)
-import 'package:flutter/foundation.dart' show kIsWeb; // ✅ Ajouté pour détecter le Web
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 
 class CreateProductScreen extends StatefulWidget {
   const CreateProductScreen({super.key});
@@ -19,8 +20,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   final _priceController = TextEditingController();
 
   String? _selectedFileType;
-  File? _selectedFile;         // Pour Mobile
-  Uint8List? _fileBytes;       // ✅ Pour le Web
+  File? _selectedFile;
+  Uint8List? _fileBytes;
   String? _fileName;
   bool _isUploading = false;
 
@@ -58,13 +59,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         setState(() {
           _fileName = fileName;
           _selectedFileType = fileType;
-          
-          // ✅ GESTION CROSS-PLATFORM (Web vs Mobile)
+
           if (kIsWeb) {
-            _fileBytes = pickedFile.bytes; // Sur le Web, on garde les bytes
+            _fileBytes = pickedFile.bytes;
           } else {
             if (pickedFile.path != null) {
-              _selectedFile = File(pickedFile.path!); // Sur Mobile, on garde le chemin
+              _selectedFile = File(pickedFile.path!);
             }
           }
         });
@@ -84,8 +84,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   Future<void> _publishProduct() async {
     if (!_formKey.currentState!.validate()) return;
-    
-    // Vérification qu'on a bien un fichier (soit en bytes, soit en path)
+
     if ((kIsWeb && _fileBytes == null) || (!kIsWeb && _selectedFile == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -102,18 +101,14 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) throw Exception('Utilisateur non connecté');
 
-      // 1. Préparation du chemin dans le bucket
       final fileExtension = _fileName!.split('.').last;
       final filePath = '$userId/${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
 
-      // 2. Upload du fichier (Méthode différente pour Web et Mobile)
       if (kIsWeb && _fileBytes != null) {
-        // ✅ Upload depuis les bytes pour le Web
         await Supabase.instance.client.storage
             .from('digital_products')
             .uploadBinary(filePath, _fileBytes!);
       } else if (_selectedFile != null) {
-        // ✅ Upload depuis le fichier pour le Mobile
         await Supabase.instance.client.storage
             .from('digital_products')
             .upload(filePath, _selectedFile!);
@@ -121,19 +116,17 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         throw Exception('Format de fichier non supporté');
       }
 
-      // 3. Récupérer l'URL du fichier
       final fileUrl = Supabase.instance.client.storage
           .from('digital_products')
           .getPublicUrl(filePath);
 
-      // 4. Insérer le produit dans la base de données
       await Supabase.instance.client.from('digital_products').insert({
         'creator_id': userId,
         'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
         'media_type': _selectedFileType,
         'file_url': fileUrl,
-        'preview_url': fileUrl, // Pour l'instant, on utilise la même URL pour l'aperçu
+        'preview_url': fileUrl,
         'price': double.parse(_priceController.text),
         'currency': 'XOF',
         'status': 'published',
@@ -167,31 +160,51 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey.shade500 : Colors.black54;
+    final fieldBg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
+    final hasFile = _selectedFile != null || _fileBytes != null;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          icon: Icon(Icons.close, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Nouveau produit',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
       ),
       body: _isUploading
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(color: Color(0xFF8B5CF6)),
-                  SizedBox(height: 16),
+                  // ✅ Loader noir/blanc
+                  CircularProgressIndicator(color: accentColor),
+                  const SizedBox(height: 16),
                   Text(
                     'Publication en cours...',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
+                    style: TextStyle(color: textColor, fontSize: 16),
                   ),
                 ],
               ),
@@ -203,20 +216,20 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Titre
-                    const Text(
+                    // ─── TITRE ───
+                    Text(
                       'Titre du produit',
-                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _titleController,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: textColor),
                       decoration: InputDecoration(
                         hintText: 'Ex: Cours de cuisine africaine',
-                        hintStyle: TextStyle(color: Colors.grey.shade500),
+                        hintStyle: TextStyle(color: subTextColor),
                         filled: true,
-                        fillColor: const Color(0xFF1A1A1A),
+                        fillColor: fieldBg,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
@@ -227,42 +240,42 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Description
-                    const Text(
+                    // ─── DESCRIPTION ───
+                    Text(
                       'Description',
-                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _descriptionController,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: textColor),
                       maxLines: 4,
                       decoration: InputDecoration(
                         hintText: 'Décrivez votre produit...',
-                        hintStyle: TextStyle(color: Colors.grey.shade500),
+                        hintStyle: TextStyle(color: subTextColor),
                         filled: true,
-                        fillColor: const Color(0xFF1A1A1A),
+                        fillColor: fieldBg,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
                     ),
                     const SizedBox(height: 20),
 
-                    // Prix
-                    const Text(
+                    // ─── PRIX ───
+                    Text(
                       'Prix (FCFA)',
-                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _priceController,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: textColor),
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         hintText: 'Ex: 5000',
-                        hintStyle: TextStyle(color: Colors.grey.shade500),
+                        hintStyle: TextStyle(color: subTextColor),
                         filled: true,
-                        fillColor: const Color(0xFF1A1A1A),
+                        fillColor: fieldBg,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
@@ -275,10 +288,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Fichier
-                    const Text(
+                    // ─── FICHIER ───
+                    Text(
                       'Fichier du produit',
-                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     GestureDetector(
@@ -286,34 +299,39 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A1A1A),
+                          color: fieldBg,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: (_selectedFile != null || _fileBytes != null) ? const Color(0xFF8B5CF6) : Colors.grey.shade700,
+                            // ✅ Bordure accent si fichier sélectionné, sinon gris adaptatif
+                            color: hasFile
+                                ? accentColor
+                                : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
                             width: 2,
                           ),
                         ),
                         child: Column(
                           children: [
                             Icon(
-                              (_selectedFile != null || _fileBytes != null) ? Icons.check_circle : Icons.cloud_upload,
-                              color: (_selectedFile != null || _fileBytes != null) ? const Color(0xFF8B5CF6) : Colors.grey,
+                              hasFile ? Icons.check_circle : Icons.cloud_upload,
+                              color: hasFile
+                                  ? accentColor
+                                  : (isDark ? Colors.grey : Colors.black38),
                               size: 48,
                             ),
                             const SizedBox(height: 12),
                             Text(
                               _fileName ?? 'Cliquez pour sélectionner un fichier',
                               style: TextStyle(
-                                color: (_selectedFile != null || _fileBytes != null) ? Colors.white : Colors.grey.shade400,
+                                color: hasFile ? textColor : subTextColor,
                                 fontSize: 14,
                               ),
                               textAlign: TextAlign.center,
                             ),
-                            if (_selectedFile != null || _fileBytes != null) ...[
+                            if (hasFile) ...[
                               const SizedBox(height: 8),
                               Text(
                                 'Type: ${_selectedFileType?.toUpperCase()}',
-                                style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                                style: TextStyle(color: subTextColor, fontSize: 12),
                               ),
                             ],
                           ],
@@ -322,20 +340,25 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    // Bouton Publier
+                    // ─── BOUTON PUBLIER ───
                     SizedBox(
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
                         onPressed: _publishProduct,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8B5CF6),
-                          foregroundColor: Colors.white,
+                          // ✅ Bouton : noir en clair / blanc en sombre
+                          backgroundColor: accentColor,
+                          foregroundColor: accentTextColor,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Publier le produit',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          style: TextStyle(
+                            color: accentTextColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
                     ),

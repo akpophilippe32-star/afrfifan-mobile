@@ -1,7 +1,7 @@
-import 'dart:ui'; // Pour l'effet de flou (ImageFilter)
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
 import '../creator/subscription_payment_screen.dart';
 import 'explore_post_detail_screen.dart';
 
@@ -12,15 +12,14 @@ class TrendingPostsScreen extends StatefulWidget {
   State<TrendingPostsScreen> createState() => _TrendingPostsScreenState();
 }
 
-// ✅ 1. AJOUT DU MIXIN POUR GARDER L'ÉCRAN EN MÉMOIRE
 class _TrendingPostsScreenState extends State<TrendingPostsScreen> with AutomaticKeepAliveClientMixin {
   final supabase = Supabase.instance.client;
-  
+
   List<Map<String, dynamic>> _posts = [];
   Set<String> _subscribedCreatorIds = {};
   String? _currentUserId;
   bool _isLoading = true;
-  bool _hasLoadedOnce = false; // ✅ 2. Pour charger une seule fois
+  bool _hasLoadedOnce = false;
 
   @override
   void initState() {
@@ -29,12 +28,10 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
     _loadData();
   }
 
-  // ✅ 3. DIT À FLUTTER DE NE PAS DÉTRUIRE CET ÉCRAN
   @override
   bool get wantKeepAlive => true;
 
   Future<void> _loadData() async {
-    // ✅ Si déjà chargé, on ne fait rien (gain de temps et de données énorme)
     if (_hasLoadedOnce) {
       debugPrint('⏭️ TrendingPosts déjà en mémoire, pas de rechargement');
       return;
@@ -42,23 +39,21 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
 
     setState(() => _isLoading = true);
     try {
-      // 1. Récupérer les abonnements actifs de l'utilisateur (pour déverrouiller le contenu)
       if (_currentUserId != null) {
         final subsResponse = await supabase
             .from('subscriptions')
             .select('creator_id')
             .eq('fan_id', _currentUserId!)
             .eq('status', 'active');
-        
+
         _subscribedCreatorIds = subsResponse.map<String>((sub) => sub['creator_id'] as String).toSet();
       }
 
-      // 2. Récupérer les posts les plus populaires (triés par nombre de likes)
       final postsResponse = await supabase
           .from('posts')
           .select('id, user_id, media_url, media_type, content, likes_count, comments_count, created_at')
           .order('likes_count', ascending: false)
-          .limit(50); // On charge les 50 plus populaires
+          .limit(50);
 
       final posts = List<Map<String, dynamic>>.from(postsResponse);
       if (posts.isEmpty) {
@@ -66,17 +61,15 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
         return;
       }
 
-      // 3. Récupérer les profils des créateurs de ces posts
       final userIds = posts.map((p) => p['user_id'] as String).toSet().toList();
       final profilesResponse = await supabase
           .from('profiles')
           .select('id, username, full_name, avatar_url')
           .inFilter('id', userIds);
-      
+
       final profiles = List<Map<String, dynamic>>.from(profilesResponse);
       final profilesMap = {for (var p in profiles) p['id'] as String: p};
 
-      // 4. Fusionner les posts avec les profils
       _posts = posts.map((post) {
         final creatorId = post['user_id'] as String;
         return {
@@ -85,7 +78,6 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
         };
       }).toList();
 
-      // ✅ 5. On marque comme chargé pour la prochaine fois
       _hasLoadedOnce = true;
 
       if (mounted) setState(() => _isLoading = false);
@@ -97,35 +89,56 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 6. OBLIGATOIRE QUAND ON UTILISE AutomaticKeepAliveClientMixin
     super.build(context);
 
+    // ✅ ÉCOUTE DU THÈME
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white54 : Colors.black45;
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+    final emptyBg = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Contenu Populaire',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? Center(child: CircularProgressIndicator(color: accentColor))
           : _posts.isEmpty
-              ? const Center(child: Text('Aucun contenu populaire pour le moment.', style: TextStyle(color: Colors.white54)))
+              ? Center(
+                  child: Text(
+                    'Aucun contenu populaire pour le moment.',
+                    style: TextStyle(color: subTextColor),
+                  ),
+                )
               : RefreshIndicator(
-                  // ✅ 7. LE PULL-TO-REFRESH FORCE LE RECHARGEMENT
                   onRefresh: () async {
                     _hasLoadedOnce = false;
                     await _loadData();
                   },
-                  color: AppColors.primary,
+                  color: accentColor,
                   child: GridView.builder(
                     padding: const EdgeInsets.all(12),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -141,15 +154,13 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
                       final mediaUrl = post['media_url']?.toString();
                       final likesCount = post['likes_count'] ?? 0;
                       final creatorName = post['profiles']?['username'] ?? 'Créateur';
-                      
-                      // ✅ LOGIQUE DE VERROUILLAGE (CLOCHE/CADENAS)
+
                       final bool isMyOwnPost = (_currentUserId == creatorId);
                       final bool isLocked = !isMyOwnPost && !_subscribedCreatorIds.contains(creatorId);
 
                       return GestureDetector(
                         onTap: () {
                           if (isLocked) {
-                            // Si verrouillé, on ouvre l'écran de paiement
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -162,12 +173,11 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
                               ),
                             ).then((success) {
                               if (success == true) {
-                                _hasLoadedOnce = false; // Force le rechargement après un paiement réussi
+                                _hasLoadedOnce = false;
                                 _loadData();
                               }
                             });
                           } else {
-                            // Si déverrouillé, on ouvre le détail du post
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -184,22 +194,24 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              // 1. IMAGE / VIDÉO DE FOND
+                              // 1. IMAGE DE FOND
                               if (mediaUrl != null && mediaUrl.isNotEmpty)
                                 isLocked
                                     ? ImageFiltered(
                                         imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                                         child: Image.network(mediaUrl, fit: BoxFit.cover),
                                       )
-                                    : Image.network(mediaUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade800))
+                                    : Image.network(mediaUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(color: emptyBg))
                               else
-                                Container(color: Colors.grey.shade800),
+                                Container(color: emptyBg),
 
                               // 2. OVERLAY SOMBRE SI VERROUILLÉ
                               if (isLocked)
                                 Container(color: Colors.black.withOpacity(0.5)),
 
-                              // 3. ICÔNE CADENAS/CLOCHE + TEXTE (SI VERROUILLÉ)
+                              // 3. CADENAS + TEXTE (SI VERROUILLÉ)
                               if (isLocked)
                                 Center(
                                   child: Column(
@@ -208,10 +220,11 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
                                       Container(
                                         padding: const EdgeInsets.all(12),
                                         decoration: BoxDecoration(
-                                          color: AppColors.primary.withOpacity(0.9),
+                                          // ✅ Cadenas neutre adaptatif
+                                          color: accentColor,
                                           shape: BoxShape.circle,
                                         ),
-                                        child: const Icon(Icons.lock, color: Colors.white, size: 24),
+                                        child: Icon(Icons.lock, color: accentTextColor, size: 24),
                                       ),
                                       const SizedBox(height: 8),
                                       const Text(
@@ -222,13 +235,13 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
                                   ),
                                 ),
 
-                              // 4. ICÔNE VIDEO SI C'EST UNE VIDÉO
+                              // 4. ICÔNE VIDÉO
                               if (post['media_type'] == 'video' && !isLocked)
                                 const Center(
                                   child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 40),
                                 ),
 
-                              // 5. INFOS EN BAS (NOM + LIKES)
+                              // 5. INFOS EN BAS
                               Positioned(
                                 bottom: 0,
                                 left: 0,
@@ -248,7 +261,12 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
                                       Expanded(
                                         child: Text(
                                           '@$creatorName',
-                                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            shadows: [Shadow(blurRadius: 3, color: Colors.black)],
+                                          ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -259,7 +277,11 @@ class _TrendingPostsScreenState extends State<TrendingPostsScreen> with Automati
                                           const SizedBox(width: 4),
                                           Text(
                                             likesCount.toString(),
-                                            style: const TextStyle(color: Colors.white, fontSize: 11),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11,
+                                              shadows: [Shadow(blurRadius: 3, color: Colors.black)],
+                                            ),
                                           ),
                                         ],
                                       ),

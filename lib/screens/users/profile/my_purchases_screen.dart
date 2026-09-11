@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path_provider/path_provider.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 import '../creator/product_viewer_screen.dart';
 import '../creator/product_detail_screen.dart';
 
@@ -50,24 +51,22 @@ class _MyPurchasesScreenState extends State<MyPurchasesScreen> {
           .order('purchase_date', ascending: false);
 
       if (mounted) {
-        // Vérifier pour chaque achat si le fichier est déjà téléchargé localement
         final dir = await getApplicationDocumentsDirectory();
         final saveDir = Directory('${dir.path}/afrifan_purchases');
-        
+
         final List<Map<String, dynamic>> enrichedPurchases = [];
         for (var purchase in response) {
           final product = purchase['digital_products'] as Map<String, dynamic>?;
           final title = product?['title'] ?? 'Produit inconnu';
           final fileUrl = product?['file_url'] as String?;
-          
-          // Vérifier si le fichier existe localement
+
           bool isDownloaded = false;
           if (fileUrl != null) {
             final fileName = fileUrl.split('/').last;
             final localPath = '${saveDir.path}/$fileName';
             isDownloaded = File(localPath).existsSync();
           }
-          
+
           enrichedPurchases.add({
             ...purchase,
             'product_title': title,
@@ -96,7 +95,6 @@ class _MyPurchasesScreenState extends State<MyPurchasesScreen> {
     final isDownloaded = purchase['is_downloaded'] as bool;
 
     if (isDownloaded && fileUrl != null) {
-      // ✅ Fichier déjà téléchargé, l'ouvrir directement
       final dir = await getApplicationDocumentsDirectory();
       final fileName = fileUrl.split('/').last;
       final localPath = '${dir.path}/afrifan_purchases/$fileName';
@@ -112,7 +110,6 @@ class _MyPurchasesScreenState extends State<MyPurchasesScreen> {
         ),
       );
     } else {
-      //  Fichier non téléchargé, rediriger vers la page de détail
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Fichier non téléchargé. Redirection...'),
@@ -121,7 +118,6 @@ class _MyPurchasesScreenState extends State<MyPurchasesScreen> {
         ),
       );
 
-      // Récupérer les infos complètes du produit pour la page de détail
       final productResponse = await supabase
           .from('digital_products')
           .select('*')
@@ -145,23 +141,40 @@ class _MyPurchasesScreenState extends State<MyPurchasesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey : Colors.black54;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E7EB);
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Mes achats',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
         ),
       ),
       body: SafeArea(
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
+            ? Center(child: CircularProgressIndicator(color: accentColor))
             : _purchases.isEmpty
                 ? Center(
                     child: Padding(
@@ -169,17 +182,23 @@ class _MyPurchasesScreenState extends State<MyPurchasesScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.shopping_bag_outlined, color: Colors.grey, size: 64),
+                          Icon(Icons.shopping_bag_outlined,
+                              color: isDark ? Colors.grey : Colors.grey.shade400,
+                              size: 64),
                           const SizedBox(height: 16),
-                          const Text(
+                          Text(
                             'Aucun achat pour le moment',
-                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
+                          Text(
                             'Explorez les boutiques des créateurs pour acheter du contenu exclusif.',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey, fontSize: 14),
+                            style: TextStyle(color: subTextColor, fontSize: 14),
                           ),
                         ],
                       ),
@@ -190,94 +209,126 @@ class _MyPurchasesScreenState extends State<MyPurchasesScreen> {
                     itemCount: _purchases.length,
                     itemBuilder: (context, index) {
                       final purchase = _purchases[index];
-                      final title = purchase['product_title'] as String;
-                      final mediaType = purchase['media_type'] as String;
-                      final amountPaid = (purchase['amount_paid'] as num?)?.toDouble() ?? 0;
-                      final isDownloaded = purchase['is_downloaded'] as bool;
-
-                      return GestureDetector(
-                        onTap: () => _openProduct(purchase),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1A1A1A),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFF2A2A2A)),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 50,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF8B5CF6).withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  mediaType == 'video' ? Icons.video_library :
-                                  mediaType == 'image' ? Icons.image :
-                                  Icons.insert_drive_file,
-                                  color: const Color(0xFF8B5CF6),
-                                  size: 28,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${amountPaid.toStringAsFixed(0)} FCFA',
-                                      style: const TextStyle(
-                                        color: Color(0xFF8B5CF6),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          isDownloaded ? Icons.check_circle : Icons.cloud_download,
-                                          color: isDownloaded ? Colors.green : Colors.grey,
-                                          size: 14,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          isDownloaded ? 'Disponible' : 'À télécharger',
-                                          style: TextStyle(
-                                            color: isDownloaded ? Colors.green : Colors.grey,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Icon(
-                                isDownloaded ? Icons.play_circle_fill : Icons.download,
-                                color: isDownloaded ? const Color(0xFF8B5CF6) : Colors.grey,
-                                size: 32,
-                              ),
-                            ],
-                          ),
-                        ),
+                      return _buildPurchaseCard(
+                        purchase,
+                        isDark: isDark,
+                        textColor: textColor,
+                        subTextColor: subTextColor,
+                        cardColor: cardColor,
+                        borderColor: borderColor,
+                        accentColor: accentColor,
                       );
                     },
                   ),
+      ),
+    );
+  }
+
+  Widget _buildPurchaseCard(
+    Map<String, dynamic> purchase, {
+    required bool isDark,
+    required Color textColor,
+    required Color subTextColor,
+    required Color cardColor,
+    required Color borderColor,
+    required Color accentColor,
+  }) {
+    final title = purchase['product_title'] as String;
+    final mediaType = purchase['media_type'] as String;
+    final amountPaid = (purchase['amount_paid'] as num?)?.toDouble() ?? 0;
+    final isDownloaded = purchase['is_downloaded'] as bool;
+
+    return GestureDetector(
+      onTap: () => _openProduct(purchase),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: borderColor),
+        ),
+        child: Row(
+          children: [
+            // ─── ICÔNE MÉDIA ───
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                // ✅ Fond accent très léger
+                color: accentColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                mediaType == 'video'
+                    ? Icons.video_library
+                    : mediaType == 'image'
+                        ? Icons.image
+                        : Icons.insert_drive_file,
+                // ✅ Icône accent (noire en clair / blanche en sombre)
+                color: accentColor,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+
+            // ─── INFOS ───
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${amountPaid.toStringAsFixed(0)} FCFA',
+                    style: TextStyle(
+                      // ✅ Prix accent
+                      color: accentColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        isDownloaded ? Icons.check_circle : Icons.cloud_download,
+                        // 🟢 Vert si dispo (état de succès), gris sinon
+                        color: isDownloaded ? Colors.green : subTextColor,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isDownloaded ? 'Disponible' : 'À télécharger',
+                        style: TextStyle(
+                          color: isDownloaded ? Colors.green : subTextColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // ─── BOUTON ACTION ───
+            Icon(
+              isDownloaded ? Icons.play_circle_fill : Icons.download,
+              // ✅ Icône accent (noire en clair / blanche en sombre)
+              color: isDownloaded ? accentColor : subTextColor,
+              size: 32,
+            ),
+          ],
+        ),
       ),
     );
   }

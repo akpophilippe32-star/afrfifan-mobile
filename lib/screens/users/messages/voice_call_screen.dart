@@ -4,6 +4,8 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:agora_token_generator/agora_token_generator.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
+
 class VoiceCallScreen extends StatefulWidget {
   final String otherUserId;
   final String otherUserName;
@@ -32,13 +34,12 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   bool _isSpeakerOn = false;
   bool _isJoined = false;
   bool _isOtherUserJoined = false;
-  bool _isLeaving = false; // ✅ empêche de raccrocher / pop deux fois
+  bool _isLeaving = false;
 
   Timer? _callTimer;
   int _callDuration = 0;
 
   final String appId = '18d7051c40f14cea8953b23824683c0b';
-  final Color primaryColor = const Color(0xFF6366F1);
 
   @override
   void initState() {
@@ -54,7 +55,6 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     _initAgora();
   }
 
-  // ✅ CANAL DE SYNCHRONISATION SUPABASE
   void _setupSyncChannel() {
     final callId = widget.callId;
     if (callId == null) return;
@@ -105,13 +105,12 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     }
   }
 
-            Future<void> _initAgora() async {
+  Future<void> _initAgora() async {
     print("🎙️ [VoiceCallScreen] Début de l'initialisation d'Agora...");
-    
-    // ✅ 1. Initialisation correcte pour agora_rtc_engine ^6.3.2
+
     _engine = createAgoraRtcEngine();
     await _engine!.initialize(RtcEngineContext(appId: appId));
-    
+
     await _engine!.enableAudio();
     await _engine!.enableLocalAudio(true);
     await _engine!.setEnableSpeakerphone(true);
@@ -141,32 +140,28 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       ),
     );
 
-    // ✅ 2. Utiliser widget.callId (le vrai nom de ton canal)
     final currentChannelId = widget.callId ?? 'default_channel';
     print("📡 [VoiceCallScreen] Connexion à la salle : $currentChannelId");
-    
-    // ✅ 3. GÉNÉRATION DU TOKEN EN LOCAL (La solution infaillible)
+
     String token = "";
     try {
       print("🔄 [VoiceCallScreen] Génération du token Agora en local...");
-      
-      final appCertificate = 'ea5e4a39245d4849bfd84a99d5100632'; // Ton certificat
 
-      // ✅ CORRECTION : Utiliser les arguments nommés exacts du package agora_token_generator
+      final appCertificate = 'ea5e4a39245d4849bfd84a99d5100632';
+
       token = RtcTokenBuilder.buildTokenWithUid(
         appId: appId,
         appCertificate: appCertificate,
         channelName: currentChannelId,
-        uid: 0, // UID 0 (anonyme)
-        tokenExpireSeconds: 3600, // Expiration dans 1 heure (le package gère le calcul tout seul)
+        uid: 0,
+        tokenExpireSeconds: 3600,
       );
-      
+
       print("✅ [VoiceCallScreen] Token généré en local avec succès !");
     } catch (e) {
       print("❌ [VoiceCallScreen] Erreur génération token local: $e");
     }
-    
-    // ✅ 4. Rejoindre le canal avec le token dynamique
+
     await _engine!.joinChannel(
       token: token,
       channelId: currentChannelId,
@@ -209,16 +204,13 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     await _engine?.muteLocalAudioStream(_isMuted);
   }
 
-  // ✅ MÉTHODE ULTRA-LÉGÈRE POUR RACCROCHER (SANS AWAIT BLOQUANT)
-    // ✅ MÉTHODE CORRIGÉE : Trace d'appel + Fermeture immédiate
   Future<void> _leaveChannel() async {
-    if (_isLeaving) return; 
+    if (_isLeaving) return;
     _isLeaving = true;
 
     print("📞 [VoiceCallScreen] Raccrochage...");
     _callTimer?.cancel();
 
-    // 1. ✅ CRÉER LA TRACE D'APPEL DANS LE CHAT (Comme WhatsApp)
     final callDurationFormatted = '${(_callDuration ~/ 60).toString().padLeft(2, '0')}:${(_callDuration % 60).toString().padLeft(2, '0')}';
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
@@ -232,39 +224,35 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       }).catchError((e) => print("⚠️ Erreur trace appel: $e"));
     }
 
-    // 2. Envoyer le signal de fin SANS attendre (fire and forget)
     final channel = _syncChannel;
     if (channel != null) {
       channel.sendBroadcastMessage(
         event: 'call_ended',
         payload: {'user': widget.isReceiver ? 'receiver' : 'caller'},
       ).catchError((e) => print("⚠️ Erreur envoi signal: $e"));
-      
+
       channel.unsubscribe().catchError((e) => print("⚠️ Erreur unsubscribe: $e"));
     }
 
-    // 3. Couper Agora SANS attendre
     final engineToCleanup = _engine;
-    _engine = null; // On libère la référence immédiatement
+    _engine = null;
 
     if (engineToCleanup != null) {
       engineToCleanup.leaveChannel().catchError((e) => print("⚠️ Erreur leaveChannel: $e"));
       engineToCleanup.release().catchError((e) => print("⚠️ Erreur release: $e"));
     }
 
-    // 4. Fermer l'écran IMMÉDIATEMENT
     if (mounted) {
       print("🔙 [VoiceCallScreen] Fermeture de l'écran...");
       Navigator.of(context).pop();
     }
   }
 
-  // ✅ LE VRAI NETTOYAGE DE SÉCURITÉ SE FAIT ICI
   @override
   void dispose() {
     print("🗑️ [VoiceCallScreen] Nettoyage automatique (dispose)...");
     _callTimer?.cancel();
-    
+
     final channel = _syncChannel;
     if (channel != null) {
       try { channel.unsubscribe(); } catch (e) {}
@@ -284,6 +272,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     required IconData icon,
     required Color iconColor,
     required Color bgColor,
+    required Color borderColor,
     required VoidCallback onTap,
     double size = 64,
   }) {
@@ -295,7 +284,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
         decoration: BoxDecoration(
           color: bgColor,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white24, width: 2),
+          border: Border.all(color: borderColor, width: 2),
         ),
         child: Icon(icon, color: iconColor, size: size * 0.5),
       ),
@@ -304,8 +293,29 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey.shade400 : Colors.black54;
+    final accentColor = isDark ? Colors.white : Colors.black;
+
+    final avatarBg = isDark ? const Color(0xFF1C1C1F) : const Color(0xFFE5E7EB);
+    final controlBg = isDark ? const Color(0xFF1C1C1F) : Colors.white;
+    final controlBorder = isDark ? Colors.white24 : Colors.black12;
+    final controlIcon = isDark ? Colors.white : Colors.black;
+    final statusBorder = isDark ? Colors.black : Colors.white;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bgColor,
       body: SafeArea(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -315,7 +325,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                    icon: Icon(Icons.arrow_back, color: subTextColor),
                     onPressed: _leaveChannel,
                   ),
                 ],
@@ -330,12 +340,12 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                     children: [
                       CircleAvatar(
                         radius: 60,
-                        backgroundColor: const Color(0xFF1C1C1F),
+                        backgroundColor: avatarBg,
                         backgroundImage: widget.otherUserAvatar != null
                             ? NetworkImage(widget.otherUserAvatar!)
                             : null,
                         child: widget.otherUserAvatar == null
-                            ? const Icon(Icons.person, color: Colors.white, size: 60)
+                            ? Icon(Icons.person, color: textColor, size: 60)
                             : null,
                       ),
                       Container(
@@ -344,7 +354,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                         decoration: BoxDecoration(
                           color: _isOtherUserJoined ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.black, width: 3),
+                          border: Border.all(color: statusBorder, width: 3),
                         ),
                       ),
                     ],
@@ -352,14 +362,14 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                   const SizedBox(height: 24),
                   Text(
                     widget.otherUserName,
-                    style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     _isOtherUserJoined ? _formatDuration(_callDuration) : 'En attente de réponse...',
                     style: TextStyle(
-                      color: _isOtherUserJoined ? primaryColor : Colors.grey.shade400,
+                      color: _isOtherUserJoined ? accentColor : subTextColor,
                       fontSize: 20,
                       fontWeight: _isOtherUserJoined ? FontWeight.w600 : FontWeight.normal,
                     ),
@@ -374,18 +384,21 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                 children: [
                   _buildControlButton(
                     icon: _isMuted ? Icons.mic_off : Icons.mic,
-                    iconColor: _isMuted ? Colors.red : Colors.white,
-                    bgColor: const Color(0xFF1C1C1F),
+                    iconColor: _isMuted ? Colors.red : controlIcon,
+                    bgColor: controlBg,
+                    borderColor: controlBorder,
                     onTap: _toggleMute,
                   ),
                   const SizedBox(width: 24),
                   _buildControlButton(
                     icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_down,
-                    iconColor: _isSpeakerOn ? primaryColor : Colors.white,
-                    bgColor: const Color(0xFF1C1C1F),
+                    iconColor: controlIcon,
+                    bgColor: controlBg,
+                    borderColor: controlBorder,
                     onTap: _toggleSpeaker,
                   ),
                   const SizedBox(width: 24),
+                  // 🔴 Bouton raccrocher reste ROUGE (standard universel)
                   GestureDetector(
                     onTap: _leaveChannel,
                     child: Container(

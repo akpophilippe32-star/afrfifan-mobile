@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
 import 'identity_verification_step.dart';
 
 class PersonalInfoStep extends StatefulWidget {
   const PersonalInfoStep({Key? key}) : super(key: key);
-  
+
   @override
   State<PersonalInfoStep> createState() => _PersonalInfoStepState();
 }
@@ -15,25 +16,20 @@ class _PersonalInfoStepState extends State<PersonalInfoStep> {
   final _birthDateController = TextEditingController();
   final _cityController = TextEditingController();
   String? _selectedCategory;
-  
-  DateTime? _selectedDate; 
+
+  DateTime? _selectedDate;
   bool _isLoading = false;
 
-  // ─── CONSTANTES DE COULEUR ────────────────────────────────
-  static const Color _primaryColor = Color(0xFF8B5CF6);
-  static const Color _backgroundColor = Color(0xFF0A0A0A);
-  static const Color _cardColor = Color(0xFF1A1A1A);
-  static const Color _borderColor = Color(0xFF333333);
-  static const Color _textColor = Colors.white;
-  static const Color _textSecondaryColor = Color(0xFF9CA3AF);
-  static const Color _hintColor = Color(0xFF6B7280);
-
   final List<String> _categories = [
-    'Musique', 'Humour', 'Éducation', 'Sport', 'Mode', 
+    'Musique', 'Humour', 'Éducation', 'Sport', 'Mode',
     'Cuisine', 'Art & Design', 'Technologie', 'Autre'
   ];
 
-  Future<void> _selectDate() async {
+  Future<void> _selectDate(bool isDark) async {
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     DateTime? picked = await showDatePicker(
       context: context,
       initialDate: DateTime(2000),
@@ -41,15 +37,25 @@ class _PersonalInfoStepState extends State<PersonalInfoStep> {
       lastDate: DateTime.now(),
       builder: (context, child) {
         return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: _primaryColor,
-              onPrimary: Colors.white,
-              surface: _cardColor,
-              onSurface: Colors.white,
-            ),
-            dialogBackgroundColor: _cardColor,
-          ),
+          data: isDark
+              ? ThemeData.dark().copyWith(
+                  colorScheme: ColorScheme.dark(
+                    primary: accentColor,
+                    onPrimary: isDark ? Colors.black : Colors.white,
+                    surface: cardColor,
+                    onSurface: textColor,
+                  ),
+                  dialogBackgroundColor: cardColor,
+                )
+              : ThemeData.light().copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: accentColor,
+                    onPrimary: Colors.white,
+                    surface: cardColor,
+                    onSurface: textColor,
+                  ),
+                  dialogBackgroundColor: cardColor,
+                ),
           child: child!,
         );
       },
@@ -113,8 +119,20 @@ class _PersonalInfoStepState extends State<PersonalInfoStep> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
+  }
+
+  Widget _buildScreen(bool isDark) {
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
+
     return Scaffold(
-      backgroundColor: _backgroundColor,
+      backgroundColor: bgColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -123,96 +141,48 @@ class _PersonalInfoStepState extends State<PersonalInfoStep> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildProgressBar(),
+                _buildProgressBar(isDark),
                 const SizedBox(height: 30),
-                const Text(
-                  'Informations personnelles',
-                  style: TextStyle(
-                    color: _textColor,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Remplissez ces informations pour compléter votre profil',
-                  style: TextStyle(
-                    color: _textSecondaryColor,
-                    fontSize: 14,
-                  ),
-                ),
+                _buildTitle(isDark),
                 const SizedBox(height: 30),
-                
-                // ─── NOM COMPLET ──────────────────────────────
+
                 _buildTextField(
                   _fullNameController,
                   'Nom complet',
                   'Ex: Jean Dupont',
                   Icons.person_outline,
+                  isDark,
                 ),
                 const SizedBox(height: 16),
-                
-                // ─── DATE DE NAISSANCE ────────────────────────
+
+                // ─── DATE DE NAISSANCE ───
                 GestureDetector(
-                  onTap: _selectDate,
+                  onTap: () => _selectDate(isDark),
                   child: AbsorbPointer(
                     child: _buildTextField(
                       _birthDateController,
                       'Date de naissance',
                       'JJ/MM/AAAA',
                       Icons.calendar_today_outlined,
+                      isDark,
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
-                
-                // ─── VILLE / PAYS ─────────────────────────────
+
                 _buildTextField(
                   _cityController,
                   'Ville / Pays',
                   'Ex: Cotonou, Bénin',
                   Icons.location_on_outlined,
+                  isDark,
                 ),
                 const SizedBox(height: 16),
-                
-                // ─── CATÉGORIE ────────────────────────────────
-                _buildDropdownField(),
-                
+
+                _buildDropdownField(isDark),
+
                 const SizedBox(height: 30),
-                
-                // ─── BOUTON SUIVANT ───────────────────────────
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _goToNextStep,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: _isLoading 
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text(
-                            'Suivant',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                ),
+                _buildNextButton(isDark),
               ],
             ),
           ),
@@ -221,27 +191,84 @@ class _PersonalInfoStepState extends State<PersonalInfoStep> {
     );
   }
 
-  // ─── WIDGETS ────────────────────────────────────────────────
+  Widget _buildTitle(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? const Color(0xFF9CA3AF) : Colors.black54;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Informations personnelles',
+          style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Remplissez ces informations pour compléter votre profil',
+          style: TextStyle(color: subTextColor, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNextButton(bool isDark) {
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final accentTextColor = isDark ? Colors.black : Colors.white;
+
+    return SizedBox(
+      width: double.infinity,
+      height: 55,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _goToNextStep,
+        style: ElevatedButton.styleFrom(
+          // ✅ Bouton : noir en clair / blanc en sombre
+          backgroundColor: accentColor,
+          foregroundColor: accentTextColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 0,
+        ),
+        child: _isLoading
+            ? SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(color: accentTextColor, strokeWidth: 2),
+              )
+            : Text(
+                'Suivant',
+                style: TextStyle(
+                  color: accentTextColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+      ),
+    );
+  }
 
   Widget _buildTextField(
     TextEditingController controller,
     String label,
     String hint,
     IconData icon,
+    bool isDark,
   ) {
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF333333) : const Color(0xFFE5E7EB);
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? const Color(0xFF9CA3AF) : Colors.black54;
+    final hintColor = isDark ? const Color(0xFF6B7280) : Colors.black38;
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     return Container(
       decoration: BoxDecoration(
-        color: _cardColor,
+        color: cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: borderColor),
       ),
       child: TextFormField(
         controller: controller,
-        style: const TextStyle(
-          color: _textColor,
-          fontSize: 16,
-        ),
-        cursorColor: _primaryColor,
+        style: TextStyle(color: textColor, fontSize: 16),
+        cursorColor: accentColor,
         validator: (value) {
           if (value == null || value.trim().isEmpty) {
             return 'Ce champ est requis';
@@ -250,70 +277,52 @@ class _PersonalInfoStepState extends State<PersonalInfoStep> {
         },
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(
-            color: _textSecondaryColor,
-            fontSize: 14,
-          ),
+          labelStyle: TextStyle(color: subTextColor, fontSize: 14),
           hintText: hint,
-          hintStyle: TextStyle(
-            color: _hintColor,
-            fontSize: 14,
-          ),
-          prefixIcon: Icon(
-            icon,
-            color: _primaryColor,
-            size: 22,
-          ),
+          hintStyle: TextStyle(color: hintColor, fontSize: 14),
+          // ✅ Icône accent au lieu de violette
+          prefixIcon: Icon(icon, color: accentColor, size: 22),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 18,
-          ),
-          errorStyle: const TextStyle(
-            color: Colors.redAccent,
-            fontSize: 12,
-          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          errorStyle: const TextStyle(color: Colors.redAccent, fontSize: 12),
           filled: true,
-          fillColor: _cardColor,
+          fillColor: cardColor,
         ),
       ),
     );
   }
 
-  Widget _buildDropdownField() {
+  Widget _buildDropdownField(bool isDark) {
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+    final borderColor = isDark ? const Color(0xFF333333) : const Color(0xFFE5E7EB);
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? const Color(0xFF9CA3AF) : Colors.black54;
+    final accentColor = isDark ? Colors.white : Colors.black;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: _cardColor,
+        color: cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: borderColor),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _selectedCategory,
           isExpanded: true,
-          dropdownColor: _cardColor,
-          hint: const Text(
+          dropdownColor: cardColor,
+          hint: Text(
             'Catégorie de contenu',
-            style: TextStyle(
-              color: _textSecondaryColor,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: subTextColor, fontSize: 14),
           ),
-          icon: Icon(
-            Icons.arrow_drop_down,
-            color: _primaryColor,
-            size: 28,
-          ),
+          // ✅ Icône accent au lieu de violette
+          icon: Icon(Icons.arrow_drop_down, color: accentColor, size: 28),
           items: _categories.map((String category) {
             return DropdownMenuItem<String>(
               value: category,
               child: Text(
                 category,
-                style: const TextStyle(
-                  color: _textColor,
-                  fontSize: 15,
-                ),
+                style: TextStyle(color: textColor, fontSize: 15),
               ),
             );
           }).toList(),
@@ -322,10 +331,7 @@ class _PersonalInfoStepState extends State<PersonalInfoStep> {
             return _categories.map((String category) {
               return Text(
                 category,
-                style: const TextStyle(
-                  color: _textColor,
-                  fontSize: 15,
-                ),
+                style: TextStyle(color: textColor, fontSize: 15),
               );
             }).toList();
           },
@@ -334,35 +340,33 @@ class _PersonalInfoStepState extends State<PersonalInfoStep> {
     );
   }
 
-  Widget _buildProgressBar() {
+  Widget _buildProgressBar(bool isDark) {
+    final accentColor = isDark ? Colors.white : Colors.black;
+    final subTextColor = isDark ? const Color(0xFF9CA3AF) : Colors.black54;
+    final progressBg = isDark ? const Color(0xFF333333) : const Color(0xFFE5E7EB);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               'Étape 1/3',
-              style: TextStyle(
-                color: _primaryColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, fontSize: 14),
             ),
             Text(
               '33%',
-              style: TextStyle(
-                color: _textSecondaryColor,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: subTextColor, fontSize: 14),
             ),
           ],
         ),
         const SizedBox(height: 12),
         LinearProgressIndicator(
           value: 0.33,
-          backgroundColor: _borderColor,
-          valueColor: const AlwaysStoppedAnimation<Color>(_primaryColor),
+          backgroundColor: progressBg,
+          // ✅ Accent au lieu de violet
+          valueColor: AlwaysStoppedAnimation<Color>(accentColor),
           minHeight: 6,
           borderRadius: BorderRadius.circular(3),
         ),

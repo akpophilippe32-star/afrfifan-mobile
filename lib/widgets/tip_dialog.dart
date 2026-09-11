@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
-import '../services/dashboard_service.dart';
+import 'package:kkiapay_flutter_sdk/kkiapay_flutter_sdk.dart'; // ✅ SDK Officiel Kkiapay
+import '../../../theme/theme_notifier.dart';
 
 class TipDialog extends StatefulWidget {
   final String creatorId;
@@ -18,8 +18,6 @@ class TipDialog extends StatefulWidget {
 }
 
 class _TipDialogState extends State<TipDialog> {
-  final DashboardService _dashboardService = DashboardService();
-
   final _amountController = TextEditingController();
   final _phoneController = TextEditingController();
   final _messageController = TextEditingController();
@@ -31,6 +29,10 @@ class _TipDialogState extends State<TipDialog> {
   final List<String> _paymentMethods = ['Orange Money', 'MTN Mobile Money', 'Moov Money'];
 
   final List<double> _quickAmounts = [500, 1000, 2000, 5000];
+
+  // ✅ REMPLACE CECI PAR TA VRAIE CLÉ PUBLIQUE KKIA PAY
+  final String kkiapayPublicKey = "72fc173fbe56f0f477e6bfcaa7349471c844e893"; 
+  final bool isSandbox = false; // Mets 'true' pour tester, 'false' pour le vrai argent (Live)
 
   @override
   void dispose() {
@@ -54,7 +56,11 @@ class _TipDialogState extends State<TipDialog> {
     });
   }
 
-  Future<void> _sendTip() async {
+  // ==========================================
+  // ✅ LOGIQUE DE PAIEMENT AVEC LE SDK OFFICIEL
+  // ==========================================
+
+  void _launchKkiapayPayment() {
     if (_selectedAmount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Veuillez entrer un montant valide'), backgroundColor: Colors.red),
@@ -76,29 +82,86 @@ class _TipDialogState extends State<TipDialog> {
       return;
     }
 
-    final success = await _dashboardService.sendTip(
-      fanId: fanId,
-      fanPhoneNumber: _phoneController.text.trim(),
-      paymentMethod: _selectedPaymentMethod,
-      creatorId: widget.creatorId,
-      amount: _selectedAmount,
-      message: _messageController.text.trim().isEmpty ? null : _messageController.text.trim(),
+    // 1. Configuration du widget KkiaPay pour le Pourboire
+    final kkiapay = KKiaPay(
+      amount: _selectedAmount.toInt(),
+      apikey: kkiapayPublicKey,
+      sandbox: isSandbox,
+      phone: _phoneController.text.trim(),
+      name: widget.creatorName,
+      reason: 'Pourboire',
+      data: widget.creatorId, // On passe le creatorId pour le retrouver après
+      theme: "#8B5CF6", // Couleur violette d'Afrifan
+      countries: ["BJ", "CI", "SN", "TG"], // Ajoute les pays que tu cibles
+      paymentMethods: ["momo", "card"],
+      callback: _handleKkiapayCallback,
     );
 
-    if (mounted) {
+    // 2. Ouvrir le widget de paiement
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => kkiapay),
+    ).then((_) {
       setState(() => _isLoading = false);
-      if (success) {
-        Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ Pourboire de ${_selectedAmount.toInt()} FCFA envoyé via $_selectedPaymentMethod !'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+    });
+  }
+
+  // 3. Gestion du résultat du paiement
+  void _handleKkiapayCallback(Map<String, dynamic> response, BuildContext context) {
+    setState(() => _isLoading = false);
+    
+    final status = response['status'];
+    final transactionId = response['transactionId'];
+    final customData = response['requestData']?['data']; // C'est notre creatorId
+
+    if (status == 'SUCCESS') {
+      // ✅ PAIEMENT RÉUSSI : On prévient notre backend pour enregistrer le tip en base de données
+      _verifyAndConfirmTip(transactionId, customData);
+    } else if (status == 'CANCELLED') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Paiement annulé."), backgroundColor: Colors.orange),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Échec du paiement. Vérifiez votre solde."), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // 4. Appel à notre Edge Function pour valider et enregistrer le pourboire
+  Future<void> _verifyAndConfirmTip(String transactionId, String creatorId) async {
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) return;
+
+      // On appelle notre Webhook/Fonction pour qu'il enregistre le tip
+      final response = await Supabase.instance.client.functions.invoke('kkiapay-webhook', body: {
+        'transaction_id': transactionId,
+        'user_id': currentUser.id,
+        'type': 'tip',
+        'reference_id': creatorId,
+        'amount': _selectedAmount,
+      });
+
+      if (response.data['success'] == true) {
+        if (mounted) {
+          Navigator.pop(context, true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Pourboire de ${_selectedAmount.toInt()} FCFA envoyé avec succès !'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       } else {
+        throw Exception("Erreur de validation serveur");
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur validation tip: $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ Échec de l\'envoi. Vérifiez votre connexion.'), backgroundColor: Colors.red),
+          const SnackBar(content: Text("Paiement effectué mais erreur de validation. Contactez le support."), backgroundColor: Colors.red),
         );
       }
     }
@@ -137,7 +200,6 @@ class _TipDialogState extends State<TipDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ✅ Icône accent au lieu de violette
               Icon(Icons.local_cafe, color: accentColor, size: 40),
               const SizedBox(height: 16),
               Text(
@@ -185,7 +247,6 @@ class _TipDialogState extends State<TipDialog> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        // ✅ Sélection : noir en clair / blanc en sombre
                         color: isSelected ? accentColor : fieldBg,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: isSelected ? accentColor : Colors.transparent),
@@ -246,7 +307,6 @@ class _TipDialogState extends State<TipDialog> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
-                  // ✅ Icône accent au lieu de violette
                   prefixIcon: Icon(Icons.phone, color: accentColor),
                 ),
               ),
@@ -274,9 +334,8 @@ class _TipDialogState extends State<TipDialog> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: canSend ? _sendTip : null,
+                  onPressed: canSend ? _launchKkiapayPayment : null,
                   style: ElevatedButton.styleFrom(
-                    // ✅ Bouton : noir en clair / blanc en sombre
                     backgroundColor: canSend ? accentColor : disabledBtnBg,
                     foregroundColor: canSend ? accentTextColor : disabledBtnText,
                     padding: const EdgeInsets.symmetric(vertical: 16),

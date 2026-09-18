@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
-import '../../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin)
+import '../../../../theme/theme_notifier.dart';
+import '../creator/creator_profile_screen.dart';
 
 class UserPostsFeedScreen extends StatefulWidget {
   final List<dynamic> posts;
@@ -23,8 +24,9 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
   late PageController _pageController;
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  // ✅ Copie locale pour permettre la modification/suppression en temps réel
+  late List<dynamic> _localPosts;
   late List<bool> _isLikedList;
-  late List<bool> _isSavedList;
   late List<int> _likesCountList;
   late List<int> _commentsCountList;
 
@@ -35,11 +37,13 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     super.initState();
     _pageController = PageController(initialPage: widget.initialIndex);
 
-    final count = widget.posts.length;
+    // ✅ Initialisation de la copie locale
+    _localPosts = List.from(widget.posts);
+
+    final count = _localPosts.length;
     _isLikedList = List.generate(count, (index) => false);
-    _isSavedList = List.generate(count, (index) => widget.posts[index]['is_saved'] == true);
-    _likesCountList = List.generate(count, (index) => widget.posts[index]['likes_count'] ?? 0);
-    _commentsCountList = List.generate(count, (index) => widget.posts[index]['comments_count'] ?? 0);
+    _likesCountList = List.generate(count, (index) => _localPosts[index]['likes_count'] ?? 0);
+    _commentsCountList = List.generate(count, (index) => _localPosts[index]['comments_count'] ?? 0);
 
     _checkUserExistingLikes();
   }
@@ -48,7 +52,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     final user = _supabase.auth.currentUser;
     if (user == null) return;
 
-    List<String> postIds = widget.posts.map((p) => p['id'].toString()).toList();
+    List<String> postIds = _localPosts.map((p) => p['id'].toString()).toList();
 
     try {
       final response = await _supabase
@@ -61,8 +65,8 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
 
       if (mounted) {
         setState(() {
-          for (int i = 0; i < widget.posts.length; i++) {
-            String currentPostId = widget.posts[i]['id'].toString();
+          for (int i = 0; i < _localPosts.length; i++) {
+            String currentPostId = _localPosts[i]['id'].toString();
             if (likedPostIds.contains(currentPostId)) {
               _isLikedList[i] = true;
             }
@@ -90,6 +94,15 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
   }
 
   // ─── ACTIONS ──────────────────────────────────────────────
+
+  void _openUserProfile(String userId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreatorProfileScreen(creatorId: userId),
+      ),
+    );
+  }
 
   void _toggleLike(int index, String postId) async {
     final user = _supabase.auth.currentUser;
@@ -144,6 +157,155 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     }
   }
 
+  // ✅ NOUVEAU : Menu d'options (Modifier / Supprimer)
+    // ✅ NOUVEAU : Menu d'options (Modifier / Supprimer)
+  void _showPostOptions(int index) {
+    // On a supprimé la vérification d'ID car on est déjà dans l'espace du créateur
+    
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit, color: Colors.blue),
+              title: const Text('Modifier la description'),
+              onTap: () {
+                Navigator.pop(context);
+                _editDescription(index);
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('Supprimer la publication', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                _deletePost(index);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ NOUVEAU : Modifier la description
+  void _editDescription(int index) async {
+    final post = _localPosts[index];
+    final postId = post['id'].toString();
+    final currentDesc = (post['content'] ?? post['caption'] ?? '').toString();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final controller = TextEditingController(text: currentDesc);
+
+    final newDesc = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        title: const Text('Modifier la description'),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          style: TextStyle(color: isDark ? Colors.white : Colors.black),
+          decoration: const InputDecoration(
+            hintText: 'Nouvelle description...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    );
+
+    if (newDesc != null && newDesc.trim().isNotEmpty && newDesc != currentDesc) {
+      try {
+        // ✅ Mise à jour réelle dans la base de données
+        await _supabase.from('posts').update({
+          'content': newDesc.trim(),
+          'caption': newDesc.trim(),
+        }).eq('id', postId);
+
+        // ✅ Mise à jour locale immédiate
+        setState(() {
+          _localPosts[index]['content'] = newDesc.trim();
+          _localPosts[index]['caption'] = newDesc.trim();
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Description modifiée avec succès'), backgroundColor: Colors.green),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // ✅ NOUVEAU : Supprimer le post (VRAIE suppression en base)
+  void _deletePost(int index) async {
+    final post = _localPosts[index];
+    final postId = post['id'].toString();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        title: const Text('Supprimer la publication ?'),
+        content: const Text('Cette action est irréversible. La publication sera définitivement supprimée de la base de données.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Supprimer', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        // ✅ Suppression réelle dans la base de données
+        await _supabase.from('posts').delete().eq('id', postId);
+        
+        // ✅ Retrait immédiat de l'interface
+        setState(() {
+          _localPosts.removeAt(index);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Publication supprimée'), backgroundColor: Colors.green),
+        );
+
+        // Si c'était le dernier post, on revient en arrière pour rafraîchir l'écran précédent
+        if (_localPosts.isEmpty) {
+          Navigator.pop(context, true); 
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors de la suppression : $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   void _openComments(BuildContext context, String postId, int index, bool isDark) {
     final TextEditingController commentController = TextEditingController();
 
@@ -190,7 +352,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                     child: FutureBuilder<List<dynamic>>(
                       future: _supabase
                           .from('comments')
-                          .select('id, content, created_at, profiles(username, avatar_url)')
+                          .select('id, user_id, content, created_at, profiles(username, avatar_url)')
                           .eq('post_id', postId)
                           .order('created_at', ascending: true),
                       builder: (context, snapshot) {
@@ -212,15 +374,25 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                           itemBuilder: (context, cIndex) {
                             final comment = comments[cIndex];
                             final profile = comment['profiles'];
+                            final commentUserId = comment['user_id']?.toString();
+
                             return Padding(
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  CircleAvatar(
-                                    radius: 18,
-                                    backgroundImage: NetworkImage(
-                                      profile?['avatar_url'] ?? 'https://via.placeholder.com/150'
+                                  GestureDetector(
+                                    onTap: () {
+                                      if (commentUserId != null) {
+                                        Navigator.pop(context);
+                                        _openUserProfile(commentUserId);
+                                      }
+                                    },
+                                    child: CircleAvatar(
+                                      radius: 18,
+                                      backgroundImage: NetworkImage(
+                                        profile?['avatar_url'] ?? 'https://via.placeholder.com/150'
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -228,9 +400,17 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          profile?['username'] ?? 'Anonyme',
-                                          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
+                                        GestureDetector(
+                                          onTap: () {
+                                            if (commentUserId != null) {
+                                              Navigator.pop(context);
+                                              _openUserProfile(commentUserId);
+                                            }
+                                          },
+                                          child: Text(
+                                            profile?['username'] ?? 'Anonyme',
+                                            style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
@@ -271,7 +451,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                           ),
                         ),
                         IconButton(
-                          // ✅ Bouton send : noir en clair / blanc en sombre
                           icon: Icon(Icons.send, color: accentColor),
                           onPressed: () async {
                             final user = _supabase.auth.currentUser;
@@ -307,7 +486,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
 
   // ─── WIDGET MÉDIA ──────────────
   Widget _buildMediaWidget(int index, bool isDark) {
-    final post = widget.posts[index];
+    final post = _localPosts[index];
     final postId = post['id']?.toString() ?? '';
     final mediaType = (post['media_type']?.toString() ?? 'image').toLowerCase();
     final mediaUrl = post['media_url']?.toString();
@@ -315,9 +494,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
     final caption = (post['content'] ?? post['caption'] ?? post['text'] ?? post['description'] ?? '').toString().trim();
     final backgroundColorHex = post['background_color']?.toString();
 
-    debugPrint('🔍 POST $index -> mediaType: "$mediaType" | caption: "$caption" | bgColor: "$backgroundColorHex"');
-
-    // ─── TEXTE ───
     if (mediaType == 'text') {
       Color getBgColor() {
         if (backgroundColorHex == null || backgroundColorHex.isEmpty) {
@@ -339,9 +515,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
           child: Padding(
             padding: const EdgeInsets.all(32.0),
             child: Text(
-              caption.isEmpty
-                  ? '⚠️ AUCUN TEXTE TROUVÉ\n\nVérifiez que la requête SQL de l\'écran précédent inclut bien les colonnes "content", "caption" ou "description" !'
-                  : caption,
+              caption.isEmpty ? '...' : caption,
               style: TextStyle(
                 color: isDark ? Colors.white : Colors.black87,
                 fontSize: 26,
@@ -355,7 +529,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
       );
     }
 
-    // ─── VIDÉO ───
     if (mediaType == 'video' && mediaUrl != null && mediaUrl.isNotEmpty) {
       return _PostVideoPlayer(
         mediaUrl: mediaUrl,
@@ -365,7 +538,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
       );
     }
 
-    // ─── IMAGE ───
     if (mediaUrl != null && mediaUrl.isNotEmpty) {
       return Image.network(
         mediaUrl,
@@ -378,7 +550,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
       );
     }
 
-    // ─── FALLBACK ───
     return Container(
       color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
       child: Center(
@@ -389,13 +560,7 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
             const SizedBox(height: 16),
             Text(
               'Type de média non reconnu ou URL manquante',
-              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Type: $mediaType\nURL: $mediaUrl',
-              style: TextStyle(color: isDark ? Colors.grey : Colors.black54, fontSize: 12),
+              style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 16),
               textAlign: TextAlign.center,
             ),
           ],
@@ -417,8 +582,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
   }
 
   Widget _buildScreen(bool isDark) {
-    // ⚠️ Le feed vidéo garde ses overlays sombres pour la lisibilité
-    // ✅ Mais le dégradé/chrome s'adapte
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -426,23 +589,23 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
           PageView.builder(
             controller: _pageController,
             scrollDirection: Axis.vertical,
-            itemCount: widget.posts.length,
+            itemCount: _localPosts.length, // ✅ Utilise la liste locale
             itemBuilder: (context, index) {
-              final post = widget.posts[index];
+              final post = _localPosts[index]; // ✅ Utilise la liste locale
               final postId = post['id']?.toString() ?? '';
-              final title = post['title'] ?? post['content'] ?? post['caption'] ?? '';
+              final title = (post['title'] ?? '').toString().trim();
               final mediaType = post['media_type']?.toString() ?? 'image';
+              
+            
 
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  // ─── 1. MÉDIA ──
                   GestureDetector(
                     onDoubleTap: () => _handleDoubleTap(index, postId),
                     child: _buildMediaWidget(index, isDark),
                   ),
 
-                  // ─── 2. DÉGRADÉ ──
                   if (mediaType != 'text')
                     IgnorePointer(
                       child: Container(
@@ -457,66 +620,49 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                       ),
                     ),
 
-                  // ─── 3. INFOS BAS GAUCHE ──
-                  Positioned(
-                    left: 16,
-                    bottom: 100,
-                    right: 80,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
-                          ),
+                  if (title.isNotEmpty)
+                    Positioned(
+                      left: 16,
+                      bottom: 100,
+                      right: 80,
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
                         ),
-                        const SizedBox(height: 8),
-                        // ✅ Hashtag : plus de violet → gris clair sur fond sombre
-                        const Text(
-                          "#artlife #creative #posts",
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.bold,
-                            shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
 
-                  // ─── 4. BOUTONS DROITE ──
-                  Positioned(
-                    right: 16,
-                    bottom: 120,
-                    child: Column(
-                      children: [
-                        _buildActionButton(
-                          icon: _isLikedList[index] ? Icons.favorite : Icons.favorite_border,
-                          // ✅ Like actif : rouge (convention universelle)
-                          iconColor: _isLikedList[index] ? Colors.redAccent : Colors.white,
-                          label: _likesCountList[index].toString(),
-                          onTap: () => _toggleLike(index, postId),
-                        ),
+                 Positioned(
+  right: 16,
+  bottom: 120,
+  child: Column(
+    children: [
+      // ✅ BOUTON OPTIONS (toujours visible)
+      _buildActionButton(
+        icon: Icons.more_vert,
+        iconColor: Colors.white,
+        label: "Options",
+        onTap: () => _showPostOptions(index),
+      ),
+      const SizedBox(height: 20),
+      
+      _buildActionButton(
+        icon: _isLikedList[index] ? Icons.favorite : Icons.favorite_border,
+        iconColor: _isLikedList[index] ? Colors.redAccent : Colors.white,
+        label: _likesCountList[index].toString(),
+        onTap: () => _toggleLike(index, postId),
+      ),
+      // ... le reste reste identique
                         const SizedBox(height: 20),
                         _buildActionButton(
                           icon: Icons.chat_bubble_outline,
                           iconColor: Colors.white,
                           label: _commentsCountList[index].toString(),
                           onTap: () => _openComments(context, postId, index, isDark),
-                        ),
-                        const SizedBox(height: 20),
-                        _buildActionButton(
-                          icon: _isSavedList[index] ? Icons.bookmark : Icons.bookmark_border,
-                          // ✅ Save actif : blanc (au lieu de violet)
-                          iconColor: _isSavedList[index] ? Colors.white : Colors.white,
-                          label: _isSavedList[index] ? "Sauvé" : "Sauver",
-                          onTap: () {
-                            // À implémenter
-                          },
                         ),
                         const SizedBox(height: 20),
                         _buildActionButton(
@@ -529,7 +675,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
                     ),
                   ),
 
-                  // ─── 5. BARRE DE CONTRÔLE VIDÉO ──
                   if (mediaType == 'video' && _videoControllers.containsKey(postId))
                     Positioned(
                       left: 0,
@@ -542,7 +687,6 @@ class _UserPostsFeedScreenState extends State<UserPostsFeedScreen> {
             },
           ),
 
-          // ─── BOUTON RETOUR ──
           Positioned(
             top: 50,
             left: 16,
@@ -641,7 +785,6 @@ class _PostVideoPlayerState extends State<_PostVideoPlayer> {
   Widget build(BuildContext context) {
     if (!_initialized || _controller == null) {
       return Center(
-        // ✅ Loader noir/blanc adaptatif
         child: CircularProgressIndicator(color: widget.isDark ? Colors.white : Colors.black),
       );
     }
@@ -725,7 +868,6 @@ class _VideoControlsBarState extends State<_VideoControlsBar> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ La barre reste blanche (au-dessus de la vidéo)
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(

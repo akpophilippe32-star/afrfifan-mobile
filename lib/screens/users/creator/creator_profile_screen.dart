@@ -1,4 +1,6 @@
 import 'dart:ui';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/messaging_service.dart';
@@ -47,6 +49,8 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   bool get _isSubscribed => _currentSubscription != null;
   bool get _isProSubscriber => _currentSubscription?['tier_type'] == 'pro';
   bool get _isPremiumSubscriber => _currentSubscription?['tier_type'] == 'premium';
+    // ✅ Cache des miniatures vidéos
+  final Map<String, Uint8List?> _videoThumbnailCache = {};
 
   @override
   void initState() {
@@ -155,7 +159,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     try {
       final response = await supabase
           .from('posts')
-          .select('id, media_url, media_type, caption, title, access_level, created_at, likes_count, comments_count')
+          .select('id, media_url, media_type, content, caption, title, access_level, created_at, likes_count, comments_count') // ✅ AJOUT DE 'content' ICI
           .eq('user_id', widget.creatorId)
           .order('created_at', ascending: false)
           .limit(30);
@@ -334,20 +338,30 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-  void _openPostDetail(int index, bool isDark) {
-    final bool isCreator = _creator?['role'] == 'creator';
-    final bool isPostPremium = _posts[index]['access_level'] == 'premium' || _posts[index]['access_level'] == 'pro';
-    final bool isLocked = isCreator && isPostPremium && !_isSubscribed;
+ void _openPostDetail(int index, bool isDark) {
+  final bool isCreatorCheck = _creator?['role'] == 'creator';
+  // ✅ MÊME LOGIQUE QUE ExploreScreen et PostDetailScreen : TOUT le contenu d'un créateur est verrouillé si pas abonné
+  final bool isLocked = isCreatorCheck && !_isSubscribed;
 
-    if (isLocked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Abonnez-vous pour voir ce contenu exclusif'),
-          backgroundColor: isDark ? Colors.white24 : Colors.black54,
+  if (isLocked) {
+    // ✅ Redirige vers le paiement au lieu du snackbar
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SubscriptionPaymentScreen(
+          creatorId: widget.creatorId,
+          creatorName: _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur',
+          tierType: 'premium',
+          price: (_creator?['premium_price'] ?? 0).toDouble() > 0 
+              ? (_creator?['premium_price'] as num).toDouble() 
+              : 2000.0,
         ),
-      );
-      return;
-    }
+      ),
+    ).then((success) {
+      if (success == true) _loadCreatorData();
+    });
+    return;
+  }
 
     final creatorName = _creator?['full_name'] ?? _creator?['username'] ?? 'Créateur';
     Navigator.push(
@@ -370,7 +384,36 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
     return count.toString();
   }
-
+    Color _getTextBgColor(String? bgColorHex, bool isDark) {
+    if (bgColorHex == null || bgColorHex.isEmpty) {
+      return isDark ? Colors.grey.shade800 : Colors.grey.shade200;
+    }
+    try {
+      String hex = bgColorHex.replaceAll('#', '0xFF');
+      return Color(int.parse(hex));
+    } catch (e) {
+      return isDark ? Colors.grey.shade800 : Colors.grey.shade200;
+    }
+  }
+  Future<Uint8List?> _getVideoThumbnail(String videoUrl) async {
+    if (_videoThumbnailCache.containsKey(videoUrl)) {
+      return _videoThumbnailCache[videoUrl];
+    }
+    try {
+      final thumb = await VideoThumbnail.thumbnailData(
+        video: videoUrl,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 300,
+        quality: 75,
+      );
+      _videoThumbnailCache[videoUrl] = thumb;
+      return thumb;
+    } catch (e) {
+      debugPrint('❌ Erreur miniature vidéo: $e');
+      _videoThumbnailCache[videoUrl] = null;
+      return null;
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
@@ -626,7 +669,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                       Container(width: 1, height: 40, color: dividerColor),
                       _buildStatItem(Icons.grid_view, _formatCount(_postsCount), 'Posts', accentColor, textColor, subTextColor),
                     ],
+                    
                   ),
+                  
                   const SizedBox(height: 24),
 
                   if (isCreator && hasPrices) ...[
@@ -706,11 +751,10 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         final mediaUrl = post['media_url']?.toString();
                         final mediaType = post['media_type']?.toString() ?? 'image';
                         final likesCount = post['likes_count'] ?? 0;
-                        final title = post['title'] ?? post['caption'] ?? '';
-
-                        final bool isCreatorCheck = _creator?['role'] == 'creator';
-                        final bool isPostPremiumCheck = post['access_level'] == 'premium' || post['access_level'] == 'pro';
-                        final bool isLocked = isCreatorCheck && isPostPremiumCheck && !_isSubscribed;
+final title = (post['content'] ?? post['title'] ?? post['caption'] ?? '').toString();
+                   final bool isCreatorCheck = _creator?['role'] == 'creator';
+// ✅ MÊME LOGIQUE : tout le contenu d'un créateur est verrouillé
+final bool isLocked = isCreatorCheck && !_isSubscribed;
 
                         return GestureDetector(
                           onTap: () => _openPostDetail(index, isDark),
@@ -721,27 +765,75 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
-                                  if (mediaUrl != null && mediaUrl.isNotEmpty)
-                                    isLocked
-                                        ? ImageFiltered(
-                                            imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                                            child: Image.network(mediaUrl,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) => Center(
-                                                    child: Icon(Icons.broken_image, color: subTextColor))),
-                                          )
-                                        : Image.network(mediaUrl,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => Center(
-                                                child: Icon(Icons.broken_image, color: subTextColor)))
-                                  else
-                                    Center(
-                                      child: Icon(
-                                        mediaType == 'text' ? Icons.text_fields : Icons.image,
-                                        color: subTextColor,
-                                        size: 32,
-                                      ),
-                                    ),
+                                if (mediaType == 'text')
+  // ✅ POST TEXTE : flouté avec couleur de fond si verrouillé
+  ImageFiltered(
+    imageFilter: isLocked ? ImageFilter.blur(sigmaX: 15, sigmaY: 15) : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
+    child: Container(
+      color: _getTextBgColor(post['background_color']?.toString(), isDark),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Text(
+            (post['content'] ?? post['caption'] ?? post['title'] ?? '').toString(),
+                        style: TextStyle(
+              color: isDark ? Colors.white : Colors.black87,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    ),
+  )
+else if (mediaType == 'video' && mediaUrl != null && mediaUrl.isNotEmpty)
+  // ✅ MINIATURE VIDÉO RÉELLE
+  FutureBuilder<Uint8List?>(
+    future: _getVideoThumbnail(mediaUrl),
+    builder: (context, snapshot) {
+      Widget mediaWidget;
+      if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData || snapshot.data == null) {
+        mediaWidget = Container(
+          color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
+          child: Center(
+            child: Icon(Icons.videocam, color: subTextColor, size: 32),
+          ),
+        );
+      } else {
+        mediaWidget = Image.memory(snapshot.data!, fit: BoxFit.cover);
+      }
+      return isLocked
+          ? ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+              child: mediaWidget,
+            )
+          : mediaWidget;
+    },
+  )
+else if (mediaUrl != null && mediaUrl.isNotEmpty)
+  isLocked
+      ? ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Image.network(mediaUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Center(
+                  child: Icon(Icons.broken_image, color: subTextColor))),
+        )
+      : Image.network(mediaUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Center(
+              child: Icon(Icons.broken_image, color: subTextColor)))
+else
+  Center(
+    child: Icon(
+      Icons.image,
+      color: subTextColor,
+      size: 32,
+    ),
+  ),
 
                                   if (isLocked)
                                     Container(

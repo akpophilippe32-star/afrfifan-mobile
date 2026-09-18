@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../theme/theme_notifier.dart'; // ✅ AJOUT (ajuste le chemin si besoin)
+import '../../../theme/theme_notifier.dart';
 
 class TextPostScreen extends StatefulWidget {
   const TextPostScreen({super.key});
@@ -14,7 +14,9 @@ class _TextPostScreenState extends State<TextPostScreen> {
   final _supabase = Supabase.instance.client;
   bool _isPosting = false;
   int _charCount = 0;
-  final int _maxChars = 500;
+  
+  // ✅ LIMITE CHANGÉE À 20 CARACTÈRES
+  final int _maxChars = 20;
 
   // ✅ Violet retiré, reste des couleurs "safe" pour la lisibilité du texte blanc
   Color _selectedBgColor = Colors.grey.shade800;
@@ -114,7 +116,6 @@ class _TextPostScreenState extends State<TextPostScreen> {
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
-                      // ✅ Loader noir/blanc
                       color: accentColor,
                       strokeWidth: 2,
                     ),
@@ -122,7 +123,6 @@ class _TextPostScreenState extends State<TextPostScreen> {
                 : Text(
                     'Publier',
                     style: TextStyle(
-                      // ✅ Bouton publier noir/blanc
                       color: accentColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -133,7 +133,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
       ),
       body: Column(
         children: [
-          // ─── ZONE DE TEXTE (la couleur est choisie par l'utilisateur) ───
+          // ─── ZONE DE TEXTE ───
           Expanded(
             child: Container(
               width: double.infinity,
@@ -145,7 +145,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
               margin: const EdgeInsets.all(16),
               child: TextField(
                 controller: _textController,
-                maxLength: _maxChars,
+                maxLength: _maxChars, // ✅ Bloque la saisie à 20 caractères
                 onChanged: (value) => setState(() => _charCount = value.length),
                 style: const TextStyle(
                   color: Colors.white,
@@ -153,10 +153,10 @@ class _TextPostScreenState extends State<TextPostScreen> {
                   fontWeight: FontWeight.w500,
                 ),
                 decoration: const InputDecoration(
-                  hintText: 'Quoi de neuf ?',
+                  hintText: 'Quoi de neuf ? (max 20)',
                   hintStyle: TextStyle(color: Colors.white54, fontSize: 24),
                   border: InputBorder.none,
-                  counterText: '',
+                  counterText: '', // On cache le compteur par défaut de Flutter pour utiliser le nôtre
                 ),
                 maxLines: null,
                 expands: true,
@@ -165,7 +165,7 @@ class _TextPostScreenState extends State<TextPostScreen> {
             ),
           ),
 
-          // ─── COMPTEUR ───
+          // ─── COMPTEUR PERSONNALISÉ ───
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
@@ -174,8 +174,9 @@ class _TextPostScreenState extends State<TextPostScreen> {
                 Text(
                   '$_charCount / $_maxChars',
                   style: TextStyle(
-                    color: _charCount > _maxChars ? Colors.red : subTextColor,
-                    fontSize: 12,
+                    color: _charCount >= _maxChars ? Colors.red : subTextColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
@@ -218,7 +219,6 @@ class _TextPostScreenState extends State<TextPostScreen> {
                       color: color,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        // ✅ Bordure blanche en sombre / noire en clair (selon le fond choisi)
                         color: isSelected ? borderColor : Colors.transparent,
                         width: 3,
                       ),

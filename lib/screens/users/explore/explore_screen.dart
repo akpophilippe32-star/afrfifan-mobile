@@ -107,7 +107,7 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
   }
 
   Future<void> _fetchAndSetCreators() async {
-    var query = supabase.from('profiles').select('id, username, full_name, avatar_url');
+    var query = supabase.from('profiles').select('id, username, full_name, avatar_url, premium_price, pro_price');
     if (_currentUserId != null) {
       query = query.neq('id', _currentUserId!);
     }
@@ -130,10 +130,10 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
     if (posts.isEmpty) return;
 
     final userIds = posts.map((p) => p['user_id'] as String).toSet().toList();
-    final profilesResponse = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, role')
-        .inFilter('id', userIds);
+final profilesResponse = await supabase
+    .from('profiles')
+    .select('id, username, avatar_url, role, premium_price, pro_price')
+    .inFilter('id', userIds);
     final profilesMap = {for (var p in List<Map<String, dynamic>>.from(profilesResponse)) p['id'] as String: p};
 
     if (mounted) {
@@ -434,29 +434,31 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
                                 final content = post['content']?.toString() ?? '';
                                 final bgColorHex = post['background_color']?.toString();
 
-                                final bool isMyOwnPost = (_currentUserId == creatorId);
-                                final bool isCreator = profileData?['role'] == 'creator';
-                                final bool isPostPremium = post['access_level'] == 'premium' ||
-                                    post['access_level'] == 'pro';
-                                final bool isLocked = isCreator &&
-                                    isPostPremium &&
-                                    !isMyOwnPost &&
-                                    !_subscribedCreatorIds.contains(creatorId);
+final bool isMyOwnPost = (_currentUserId == creatorId);
+final bool isCreator = profileData?['role'] == 'creator';
+// ✅ MÊME LOGIQUE QUE LE WEB : tout post de créateur est verrouillé si pas abonné
+final bool isLocked = isCreator &&
+    !isMyOwnPost &&
+    !_subscribedCreatorIds.contains(creatorId);
 
                                 return GestureDetector(
                                   onTap: () {
-                                    if (isLocked) {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => SubscriptionPaymentScreen(
-                                            creatorId: creatorId,
-                                            creatorName: username,
-                                            tierType: 'premium',
-                                            price: 2000.0,
-                                          ),
-                                        ),
-                                      ).then((success) {
+                                  if (isLocked) {
+  // ✅ MÊME LOGIQUE QUE LE WEB : toujours tierType = 'premium', prix depuis le profil
+  const String tierType = 'premium';
+  final double premiumPrice = (profileData?['premium_price'] as num?)?.toDouble() ?? 0.0;
+  
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => SubscriptionPaymentScreen(
+        creatorId: creatorId,
+        creatorName: username,
+        tierType: tierType,
+        price: premiumPrice > 0 ? premiumPrice : 2000.0,
+      ),
+    ),
+  ).then((success) {
                                         if (success == true) {
                                           _hasLoadedOnce = false;
                                           _loadAllData();
@@ -649,37 +651,71 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
   // ═══════════════════════════════════════════════════════════════
   //  📝 APERÇU POST TEXTE
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildTextPreview(String content, String? bgColorHex, bool isDark, bool isLocked) {
-    Color bgColor;
-    if (bgColorHex != null && bgColorHex.isNotEmpty) {
-      try {
-        bgColor = Color(int.parse(bgColorHex.replaceAll('#', '0xFF')));
-      } catch (_) {
-        bgColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
-      }
-    } else {
+Widget _buildTextPreview(String content, String? bgColorHex, bool isDark, bool isLocked) {
+  Color bgColor;
+  if (bgColorHex != null && bgColorHex.isNotEmpty) {
+    try {
+      bgColor = Color(int.parse(bgColorHex.replaceAll('#', '0xFF')));
+    } catch (_) {
       bgColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
     }
+  } else {
+    bgColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+  }
 
-    final textColor = bgColor.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
+  final textColor = bgColor.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
 
-    return Container(
-      color: bgColor,
-      padding: const EdgeInsets.all(16),
-      child: Center(
-        child: Text(
-          content.isEmpty ? '...' : content,
-          style: TextStyle(
-            color: textColor,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            height: 1.3,
+  // ✅ POST TEXTE VERROUILLÉ : flouté + voile sombre (comme les images sur le web)
+  if (isLocked) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Fond + texte floutés
+        ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            color: bgColor,
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: Text(
+                content.isEmpty ? '...' : content,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ),
           ),
-          maxLines: 6,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
         ),
-      ),
+        // Voile sombre (comme le web fait `rgba(0,0,0,0.6)`)
+        Container(color: Colors.black.withOpacity(0.6)),
+      ],
     );
   }
+
+  // ✅ POST TEXTE LIBRE : affichage normal
+  return Container(
+    color: bgColor,
+    padding: const EdgeInsets.all(16),
+    child: Center(
+      child: Text(
+        content.isEmpty ? '...' : content,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          height: 1.3,
+        ),
+        maxLines: 6,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+      ),
+    ),
+  );
+}
 }

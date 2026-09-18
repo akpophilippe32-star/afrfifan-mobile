@@ -5,10 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
+import '../../../theme/theme_notifier.dart';
 import '../../../services/content_service.dart';
 import '../create/models/draft_post.dart';
-import '../../../services/video_compression_service.dart';
 
 class PostSelectionScreen extends StatefulWidget {
   final String mediaPath;
@@ -33,7 +32,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
   Uint8List? _imageBytes;
   bool _isLoading = true;
   bool _isPublishing = false;
-  bool _isCompressing = false;
 
   @override
   void initState() {
@@ -77,7 +75,7 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     super.dispose();
   }
 
-  // ✅ PUBLIER EN STORY
+  // ✅ PUBLIER EN STORY (SANS COMPRESSION)
   Future<void> _publishToStory() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -90,27 +88,11 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       return;
     }
 
-    setState(() {
-      _isPublishing = true;
-      _isCompressing = widget.mediaType == 'video';
-    });
+    setState(() => _isPublishing = true);
 
     try {
-      XFile fileToUpload = widget.xFile!;
-
-      if (widget.mediaType == 'video') {
-        final compressedFile = await VideoCompressionService().compressVideo(fileToUpload.path);
-        if (compressedFile != null) {
-          fileToUpload = XFile(compressedFile.path);
-        } else {
-          setState(() { _isPublishing = false; _isCompressing = false; });
-          _showError('Échec de la compression vidéo.');
-          return;
-        }
-      }
-
       final storyId = await contentService.publishStory(
-        mediaFile: fileToUpload,
+        mediaFile: widget.xFile!,
         userId: user.id,
       );
 
@@ -125,15 +107,12 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       debugPrint('❌ Erreur: $e');
       _showError('Une erreur est survenue');
     } finally {
-      if (mounted) setState(() {
-        _isPublishing = false;
-        _isCompressing = false;
-      });
+      if (mounted) setState(() => _isPublishing = false);
     }
   }
 
-  // ✅ PUBLIER SUR LE FEED
-  Future<void> _publishToFeed({String? title, String? caption}) async {
+  // ✅ PUBLIER SUR LE FEED (SANS COMPRESSION, SANS TITRE)
+  Future<void> _publishToFeed({String? caption}) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
       _showError('Connectez-vous pour publier');
@@ -145,41 +124,20 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       return;
     }
 
-    setState(() {
-      _isPublishing = true;
-      _isCompressing = widget.mediaType == 'video';
-    });
+    setState(() => _isPublishing = true);
 
     try {
       final draft = DraftPost();
       draft.postType = widget.mediaType;
+      
+      // On garde uniquement la légende (max 20 caractères)
       draft.caption = caption ?? '';
 
       if (widget.selectedSound != null) {
         draft.musicUrl = widget.selectedSound!['url'];
       }
-      if (title != null && title.isNotEmpty) {
-        draft.caption = '$title\n\n${draft.caption}';
-      }
 
-      XFile fileToUpload = widget.xFile!;
-      if (widget.mediaType == 'video') {
-        debugPrint('🎬 Début de la compression vidéo...');
-        final compressedFile = await VideoCompressionService().compressVideo(
-          fileToUpload.path,
-        );
-
-        if (compressedFile == null) {
-          setState(() { _isPublishing = false; _isCompressing = false; });
-          _showError('Échec de la compression vidéo. Réessayez.');
-          return;
-        }
-
-        fileToUpload = XFile(compressedFile.path);
-        debugPrint('✅ Vidéo compressée avec succès !');
-      }
-
-      draft.mediaFiles = [fileToUpload];
+      draft.mediaFiles = [widget.xFile!];
 
       final postId = await contentService.publishPost(draft);
 
@@ -194,15 +152,12 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       debugPrint('❌ Erreur: $e');
       _showError('Une erreur est survenue : $e');
     } finally {
-      if (mounted) setState(() {
-        _isPublishing = false;
-        _isCompressing = false;
-      });
+      if (mounted) setState(() => _isPublishing = false);
     }
   }
 
   void _showFeedOptions(bool isDark) {
-    final titleController = TextEditingController();
+    // ✅ Suppression du titleController
     final captionController = TextEditingController();
 
     final sheetBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
@@ -237,30 +192,26 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
             Text('Détails de la publication',
                 style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
-            TextField(
-              controller: titleController,
-              style: TextStyle(color: textColor),
-              decoration: InputDecoration(
-                hintText: 'Titre',
-                hintStyle: TextStyle(color: subTextColor),
-                filled: true,
-                fillColor: fieldBg,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 12),
+            
+            // ✅ UNIQUEMENT LA LÉGENDE (Limitée à 20 caractères)
             TextField(
               controller: captionController,
+              maxLength: 20,
               maxLines: 3,
               style: TextStyle(color: textColor),
               decoration: InputDecoration(
-                hintText: 'Légende (optionnel)',
+                hintText: 'Légende (max 20 caractères)',
                 hintStyle: TextStyle(color: subTextColor),
                 filled: true,
                 fillColor: fieldBg,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                counterStyle: TextStyle(color: subTextColor, fontSize: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12), 
+                  borderSide: BorderSide.none
+                ),
               ),
             ),
+            
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -268,10 +219,10 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  _publishToFeed(title: titleController.text, caption: captionController.text);
+                  // ✅ On envoie uniquement la caption
+                  _publishToFeed(caption: captionController.text);
                 },
                 style: ElevatedButton.styleFrom(
-                  // ✅ Bouton publier noir/blanc
                   backgroundColor: accentColor,
                   foregroundColor: accentTextColor,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -339,33 +290,27 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       body: SafeArea(
-        child: (_isPublishing || _isCompressing)
+        child: _isPublishing
             ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // ✅ Loader noir/blanc
                     CircularProgressIndicator(color: accentColor),
                     const SizedBox(height: 16),
                     Text(
-                      _isCompressing
-                          ? '🎬 Compression de la vidéo en cours...'
-                          : '🚀 Publication en cours...',
+                      '🚀 Publication en cours...',
                       style: TextStyle(color: textColor, fontSize: 16),
                     ),
-                    if (_isCompressing) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Cela peut prendre quelques secondes',
-                        style: TextStyle(color: subTextColor, fontSize: 12),
-                      ),
-                    ]
+                    const SizedBox(height: 8),
+                    Text(
+                      'Cela peut prendre quelques secondes',
+                      style: TextStyle(color: subTextColor, fontSize: 12),
+                    ),
                   ],
                 ),
               )
             : Column(
                 children: [
-                  // ─── APERÇU MÉDIA ───
                   Expanded(
                     flex: 3,
                     child: Container(
@@ -383,7 +328,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
                     ),
                   ),
 
-                  // ─── OPTIONS DE PUBLICATION ───
                   Expanded(
                     flex: 2,
                     child: Padding(
@@ -395,7 +339,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                // ✅ Fond accent très léger
                                 color: accentColor.withOpacity(0.12),
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -501,7 +444,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          // ✅ Carte avec accent noir/blanc léger
           color: accentColor.withOpacity(0.08),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: accentColor.withOpacity(0.3), width: 1.5),
@@ -511,7 +453,6 @@ class _PostSelectionScreenState extends State<PostSelectionScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                // ✅ Icône dans un rond accent
                 color: accentColor,
                 borderRadius: BorderRadius.circular(12),
               ),

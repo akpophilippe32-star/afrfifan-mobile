@@ -1,7 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';                                    // ✅ Uint8List
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';                     // ✅ kIsWeb
+
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 // ✅ IMPORTS DES ÉCRANS
 import 'my_subscriptions_screen.dart';
@@ -25,7 +30,9 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+// ✅ REMPLACE TOUT CE BLOC PAR CELUI-CI :
+
+class _ProfileScreenState extends State<ProfileScreen> with AutomaticKeepAliveClientMixin {
   Map<String, dynamic>? _profile;
   List<dynamic> _userPosts = [];
   List<Map<String, dynamic>> _userStories = [];
@@ -37,11 +44,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _totalLikes = 0;
   bool _hasLoadedOnce = false;
   String _applicationStatus = 'none';
+  
+  // ✅ Cache des miniatures vidéos
+  final Map<String, Uint8List?> _storyThumbnailCache = {};
 
+  // ✅ 1. OBLIGATOIRE POUR LE MIXIN (NE PAS SUPPRIMER)
+  @override
+  bool get wantKeepAlive => true;
+
+  // ✅ 2. MÉTHODES POUR LES MINIATURES (C'EST CELLES QUI MANQUAIENT)
+  Future<void> _loadStoryThumbnail(String url) async {
+    if (kIsWeb || _storyThumbnailCache.containsKey(url)) return;
+    _storyThumbnailCache[url] = null;
+    try {
+      final thumb = await VideoThumbnail.thumbnailData(
+        video: url,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 200,
+        quality: 75,
+      );
+      if (mounted) setState(() => _storyThumbnailCache[url] = thumb);
+    } catch (e) {
+      debugPrint('❌ Erreur miniature story: $e');
+    }
+  }
+
+  void _preloadStoryThumbnails() {
+    for (final story in _userStories) {
+      final type = (story['media_type'] ?? '').toString().toLowerCase();
+      final url = story['media_url']?.toString();
+      if (type == 'video' && url != null && url.isNotEmpty) {
+        _loadStoryThumbnail(url);
+      }
+    }
+  }
+
+  // ✅ 3. UN SEUL INITSTATE (le doublon a été supprimé)
   @override
   void initState() {
     super.initState();
     _loadProfileData();
+  }
+
+  // ✅ 3. N'OUBLIE PAS D'AJOUTER super.build(context) DANS TA MÉTHODE build() PLUS BAS :
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // <--- CETTE LIGNE EST OBLIGATOIRE ICI
+    
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        return _buildScreen(isDark);
+      },
+    );
   }
 
   Future<void> _loadProfileData() async {
@@ -113,16 +169,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .eq('creator_id', userId)
           .order('created_at', ascending: false)
           .timeout(connectionTimeout);
-
-      if (mounted) {
-        setState(() {
-          _userPosts = posts;
-          _totalPosts = _userPosts.length;
-          _totalLikes = likes;
-          _userStories = List<Map<String, dynamic>>.from(storiesData ?? []);
-          _hasLoadedOnce = true;
-        });
-      }
+if (mounted) {
+  setState(() {
+    _userPosts = posts;
+    _totalPosts = _userPosts.length;
+    _totalLikes = likes;
+    _userStories = List<Map<String, dynamic>>.from(storiesData ?? []);
+    _hasLoadedOnce = true;
+  });
+  _preloadStoryThumbnails(); // ✅ Génère les miniatures vidéos
+}
     } catch (error) {
       debugPrint("🚨 ERREUR CHARGEMENT PROFIL : $error");
       if (mounted) setState(() => _errorMessage = "Erreur de chargement.");
@@ -446,16 +502,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ═══════════════════════════════════════════════════════════════
   //  BUILD AVEC ÉCOUTE DU THÈME
   // ═══════════════════════════════════════════════════════════════
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (context, currentMode, _) {
-        final isDark = currentMode == ThemeMode.dark;
-        return _buildScreen(isDark);
-      },
-    );
-  }
 
   Widget _buildScreen(bool isDark) {
     final bgColor = isDark ? Colors.black : Colors.white;
@@ -942,88 +988,183 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _getStoryPreview(String mediaType, String? mediaUrl, String? bgColor) {
-    if (mediaType == 'text' && bgColor != null) {
-      try {
-        return Container(
-          color: Color(int.parse(bgColor.replaceAll('#', '0xFF'))),
-          child: const Center(child: Icon(Icons.text_fields, color: Colors.white, size: 28)),
-        );
-      } catch (e) {
-        return Container(
-          color: Colors.grey,
-          child: const Center(child: Icon(Icons.text_fields, color: Colors.white, size: 28)),
-        );
-      }
-    } else if (mediaUrl != null) {
-      return Image.network(mediaUrl,
-          fit: BoxFit.cover,
-          width: 65,
-          height: 65,
-          errorBuilder: (_, __, ___) =>
-              const Icon(Icons.image, color: Colors.grey, size: 28));
+  // ─── STORY TEXTE : fond coloré ───
+  if (mediaType == 'text' && bgColor != null) {
+    try {
+      return Container(
+        color: Color(int.parse(bgColor.replaceAll('#', '0xFF'))),
+        child: const Center(child: Icon(Icons.text_fields, color: Colors.white, size: 28)),
+      );
+    } catch (e) {
+      return Container(
+        color: Colors.grey,
+        child: const Center(child: Icon(Icons.text_fields, color: Colors.white, size: 28)),
+      );
     }
-    return const Icon(Icons.image, color: Colors.grey, size: 28);
   }
 
-  Widget _buildPostsGrid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 0.75),
-      itemCount: _userPosts.length,
-      itemBuilder: (context, index) {
-        final post = _userPosts[index];
-        final imageUrl = post['media_url'];
-        final viewsCount = post['likes_count'] ?? 0;
-        final mediaType = post['media_type'] ?? 'image';
-        return GestureDetector(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => UserPostsFeedScreen(posts: _userPosts, initialIndex: index)),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                imageUrl != null && imageUrl.toString().isNotEmpty
-                    ? Image.network(imageUrl.toString(),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                            color: Colors.grey[900],
-                            child: const Icon(Icons.image, color: Colors.grey)))
-                    : Container(color: Colors.grey[900]),
-                Container(color: Colors.black.withOpacity(0.2)),
-                if (mediaType == 'video')
-                  const Positioned(
-                      top: 6, right: 6, child: Icon(Icons.play_circle, color: Colors.white, size: 20)),
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.black87, Colors.transparent],
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                      ),
-                    ),
-                    child: Text('${_formatCount(viewsCount)}',
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+  // ─── STORY VIDÉO : VRAIE MINIATURE (1ère image de la vidéo) ───
+  if (mediaType == 'video' && mediaUrl != null && mediaUrl.isNotEmpty) {
+    final thumb = _storyThumbnailCache[mediaUrl];
+    if (thumb != null) {
+      // ✅ Miniature réelle générée depuis la vidéo
+      return Image.memory(thumb, fit: BoxFit.cover, width: 65, height: 65);
+    }
+    // Pendant le chargement : fond sombre + icône caméra
+    return Container(
+      color: Colors.grey.shade900,
+     child: Center(
+  child: Icon(
+    Icons.videocam,
+    color: Colors.white.withOpacity(0.45),
+    size: 24,
+  ),
+),
     );
   }
+
+  // ─── STORY IMAGE : image normale ───
+  if (mediaUrl != null && mediaUrl.isNotEmpty) {
+    return Image.network(mediaUrl,
+        fit: BoxFit.cover,
+        width: 65,
+        height: 65,
+        errorBuilder: (_, __, ___) =>
+            const Icon(Icons.image, color: Colors.grey, size: 28));
+  }
+  return const Icon(Icons.image, color: Colors.grey, size: 28);
+}
+
+  Widget _buildPostsGrid() {
+  return GridView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 0.75),
+    itemCount: _userPosts.length,
+    itemBuilder: (context, index) {
+      final post = _userPosts[index];
+      final imageUrl = post['media_url'];
+      final likesCount = post['likes_count'] ?? 0;
+      final mediaType = (post['media_type'] ?? 'image').toString().toLowerCase();
+      final content = post['content'] ?? post['caption'] ?? '';
+      final backgroundColorHex = post['background_color'];
+      
+      return GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => UserPostsFeedScreen(posts: _userPosts, initialIndex: index)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // ─── AFFICHAGE SELON LE TYPE DE MÉDIA ───
+              if (mediaType == 'video')
+                // Vidéo : fond sombre + icône play
+                Container(
+                  color: Colors.grey[900],
+                  child: Center(
+                    child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 40),
+                  ),
+                )
+              else if (mediaType == 'text')
+                // Texte : fond coloré + texte
+                _buildTextPostPreview(content, backgroundColorHex)
+              else if (imageUrl != null && imageUrl.toString().isNotEmpty)
+                // Image normale
+                Image.network(imageUrl.toString(),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                        color: Colors.grey[900],
+                        child: const Icon(Icons.image, color: Colors.grey)))
+              else
+                Container(color: Colors.grey[900]),
+                
+              // Overlay sombre pour lisibilité
+              Container(color: Colors.black.withOpacity(0.2)),
+              
+              // Icône vidéo en haut à droite
+              if (mediaType == 'video')
+                const Positioned(
+                    top: 6, right: 6, child: Icon(Icons.play_circle, color: Colors.white, size: 20)),
+                    
+              // Icône texte en haut à droite
+              if (mediaType == 'text')
+                const Positioned(
+                    top: 6, right: 6, child: Icon(Icons.text_fields, color: Colors.white, size: 20)),
+                    
+              // Compteur de likes en bas
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.black87, Colors.transparent],
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.favorite, color: Colors.white, size: 12),
+                      const SizedBox(width: 4),
+                      Text('${_formatCount(likesCount)}',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Widget _buildTextPostPreview(String content, String? backgroundColorHex) {
+  Color bgColor;
+  if (backgroundColorHex != null && backgroundColorHex.isNotEmpty) {
+    try {
+      String hex = backgroundColorHex.startsWith('#')
+          ? backgroundColorHex.replaceAll('#', '0xFF')
+          : '0xFF$backgroundColorHex';
+      bgColor = Color(int.parse(hex));
+    } catch (e) {
+      bgColor = Colors.grey.shade800;
+    }
+  } else {
+    bgColor = Colors.grey.shade800;
+  }
+  
+  return Container(
+    color: bgColor,
+    padding: const EdgeInsets.all(8),
+    child: Center(
+      child: Text(
+        content.isEmpty ? '...' : content,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          height: 1.2,
+        ),
+        textAlign: TextAlign.center,
+        maxLines: 4,
+        overflow: TextOverflow.ellipsis,
+      ),
+    ),
+  );
+}
+
 
   Widget _buildEmptyState(Color textColor, Color subTextColor) {
     return Column(

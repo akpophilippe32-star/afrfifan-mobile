@@ -747,20 +747,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              setState(() { _showAttachmentMenu = !_showAttachmentMenu; _showEmojiPanel = false; });
-                              if (_showAttachmentMenu) _pickAndSendImage();
-                            },
-                            child: Container(
-                              width: 40, height: 40,
-                              decoration: BoxDecoration(color: attachBtnBg, shape: BoxShape.circle),
-                              child: Icon(Icons.attach_file, color: attachIconColor, size: 22),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
+                      children: [
+  Expanded(
                             child: TextField(
                               controller: _messageController,
                               focusNode: _focusNode,

@@ -18,9 +18,6 @@ class _SalesTabState extends State<SalesTab> {
   int _totalSales = 0;
   List<Map<String, dynamic>> _productStats = [];
 
-  String _debugMessage = '';
-  int _rawRowCount = 0;
-
   StreamSubscription? _salesSubscription;
 
   @override
@@ -73,14 +70,6 @@ class _SalesTabState extends State<SalesTab> {
           .order('purchase_date', ascending: false);
 
       if (mounted) {
-        _rawRowCount = response.length;
-
-        if (response.isEmpty) {
-          _debugMessage = '⚠️ 0 vente trouvée avec le statut "completed".\nVérifie si ton achat test est bien passé en "completed" dans Supabase.';
-        } else {
-          _debugMessage = '✅ ${response.length} vente(s) "completed" trouvée(s) en base de données.';
-        }
-
         Map<String, Map<String, dynamic>> statsMap = {};
         double totalRev = 0.0;
         int totalSalesCount = 0;
@@ -123,7 +112,6 @@ class _SalesTabState extends State<SalesTab> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _debugMessage = '❌ ERREUR : $e';
           _isLoading = false;
         });
       }
@@ -171,44 +159,6 @@ class _SalesTabState extends State<SalesTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🚨 BOÎTE DE DIAGNOSTIC
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              // ✅ Vert/orange conservés (sémantique : succès / warning)
-              color: _rawRowCount > 0 ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: _rawRowCount > 0 ? Colors.green : Colors.orange),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '🔍 DIAGNOSTIC BASE DE DONNÉES',
-                  style: TextStyle(
-                    color: textColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _debugMessage,
-                  style: TextStyle(color: textColor, fontSize: 13),
-                ),
-                Text(
-                  'Somme calculée par Flutter : ${_formatPrice(_totalRevenue)}',
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.black54,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
           // 📊 CARTES DE STATISTIQUES GLOBALES
           Row(
             children: [

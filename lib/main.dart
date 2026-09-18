@@ -14,10 +14,6 @@ import 'screens/users/messages/incoming_call_screen.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 RealtimeChannel? _callChannel;
 
-// ✅ Contrôleur global de thème
-// ThemeMode.system  → suit le téléphone
-// ThemeMode.dark    → sombre par défaut (adapte à ton design Afrifan)
-// ThemeMode.light   → clair par défaut
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 
 Future<void> main() async {
@@ -32,15 +28,14 @@ Future<void> main() async {
 
   final supabase = Supabase.instance.client;
 
+  // ✅ Écouteur global pour les appels entrants ET les changements d'état
   supabase.auth.onAuthStateChange.listen((data) {
     final event = data.event;
     final session = data.session;
 
     if (event == AuthChangeEvent.signedIn && session != null) {
       final currentUserId = session.user.id;
-      print("✅ [MAIN DIAGNOSTIC] Utilisateur CONNECTÉ ! ID: $currentUserId");
-      print("📡 [MAIN DIAGNOSTIC] Activation de l'écouteur d'appels entrants...");
-
+      
       _callChannel?.unsubscribe();
 
       _callChannel = supabase
@@ -73,24 +68,29 @@ Future<void> main() async {
                   displayName = response['full_name'] ?? response['username'] ?? "Utilisateur";
                   displayAvatar = response['avatar_url'];
                 } catch (e) {
-                  print("⚠️ [MAIN DIAGNOSTIC] Erreur récupération nom appelant : $e");
+                  print("⚠️ Erreur récupération nom appelant : $e");
                 }
 
-                navigatorKey.currentState?.push(
-                  MaterialPageRoute(
-                    builder: (context) => IncomingCallScreen(
-                      callId: newCall['id'].toString(),
-                      callerId: callerId,
-                      callerName: displayName,
-                      callerAvatar: displayAvatar,
+                // Vérifier si on est déjà sur un appel pour éviter les doublons
+                if (navigatorKey.currentState?.canPop() == false || 
+                    navigatorKey.currentState?.widget is! IncomingCallScreen) {
+                  
+                  navigatorKey.currentState?.push(
+                    MaterialPageRoute(
+                      builder: (context) => IncomingCallScreen(
+                        callId: newCall['id'].toString(),
+                        callerId: callerId,
+                        callerName: displayName,
+                        callerAvatar: displayAvatar,
+                      ),
                     ),
-                  ),
-                );
+                  );
+                }
               }
             },
           )
           .subscribe((status, error) {
-            if (error != null) print("❌ [MAIN DIAGNOSTIC] Erreur Realtime : $error");
+            if (error != null) print("❌ Erreur Realtime : $error");
           });
     } else if (event == AuthChangeEvent.signedOut) {
       _callChannel?.unsubscribe();
@@ -122,37 +122,15 @@ class _AfrifanAppState extends State<AfrifanApp> {
           navigatorKey: navigatorKey,
           title: 'Afrifan',
           debugShowCheckedModeBanner: false,
-
-          theme: AppTheme.light.copyWith(
-            scrollbarTheme: ScrollbarThemeData(
-              thumbVisibility: WidgetStateProperty.all(true),
-              thickness: WidgetStateProperty.all(6.0),
-              radius: const Radius.circular(10),
-              thumbColor: WidgetStateProperty.all(const Color(0xFF6366F1).withOpacity(0.5)),
-            ),
-          ),
-
-          darkTheme: AppTheme.dark.copyWith(
-            scrollbarTheme: ScrollbarThemeData(
-              thumbVisibility: WidgetStateProperty.all(true),
-              thickness: WidgetStateProperty.all(6.0),
-              radius: const Radius.circular(10),
-              thumbColor: WidgetStateProperty.all(const Color(0xFF6366F1).withOpacity(0.5)),
-            ),
-          ),
-
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
           themeMode: currentThemeMode,
-
           scrollBehavior: const MaterialScrollBehavior().copyWith(
-            dragDevices: {
-              PointerDeviceKind.touch,
-              PointerDeviceKind.mouse,
-            },
+            dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
           ),
-          useInheritedMediaQuery: true,
           locale: DevicePreview.locale(context),
           builder: DevicePreview.appBuilder,
-          home: const SplashScreen(),
+          home: const SplashScreen(), // ✅ Le SplashScreen va gérer la redirection
         );
       },
     );

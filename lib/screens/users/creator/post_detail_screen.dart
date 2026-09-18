@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
-import '../../../theme/theme_notifier.dart'; // ✅ AJOUT
+import '../../../theme/theme_notifier.dart';
 import '../../../widgets/tip_dialog.dart';
 import '../../../widgets/report_dialog.dart';
 import '../../../services/share_service.dart';
@@ -291,7 +291,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Widget _buildMediaWidget(Map<String, dynamic> post, String postId, bool isDark) {
     final mediaType = post['media_type']?.toString() ?? 'image';
     final mediaUrl = post['media_url']?.toString();
-    final caption = post['caption'] ?? post['content'] ?? post['title'] ?? '';
+    // ✅ CORRECTION 1 : Prend content en premier, sans .toString()
+    final caption = post['content'] ?? post['caption'] ?? post['title'] ?? '';
     final backgroundColorHex = post['background_color'];
 
     // ─── TEXTE ──────────────────────────────────────────────
@@ -313,9 +314,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           child: Padding(
             padding: const EdgeInsets.all(32.0),
             child: Text(
-              caption.isEmpty ? '📝 (Contenu texte vide)' : caption,
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
+              // ✅ CORRECTION 2 : Affiche '...' si vide, et police blanche fixe
+              caption.isEmpty ? '...' : caption,
+              style: const TextStyle(
+                color: Colors.white,
                 fontSize: 26,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
@@ -382,7 +384,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         itemBuilder: (context, index) {
           final post = widget.posts[index];
           final postId = post['id']?.toString() ?? '';
-          final caption = post['caption'] ?? post['content'] ?? post['title'] ?? '';
+          // ✅ CORRECTION 3 : Prend content en premier, sans .toString()
+          final caption = post['content'] ?? post['caption'] ?? post['title'] ?? '';
           final mediaType = post['media_type']?.toString() ?? 'image';
           final likesCount = post['likes_count'] ?? 0;
           final commentsCount = post['comments_count'] ?? 0;
@@ -511,7 +514,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
-                                // ✅ Bouton "Suivre" : noir en clair / blanc en sombre
                                 color: accentColor,
                                 borderRadius: BorderRadius.circular(20),
                               ),
@@ -530,15 +532,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text(
-                      caption.isEmpty ? '📝 (Pas de légende)' : caption,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        height: 1.4,
-                        shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
+                    // ✅ CORRECTION 4 : N'affiche PAS le texte en bas si c'est déjà un post texte
+                    if (mediaType != 'text')
+                      Text(
+                        caption.isEmpty ? '📝 (Pas de légende)' : caption,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          height: 1.4,
+                          shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(1, 1))],
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 8),
                     Text(
                       '${createdAt.day}/${createdAt.month}/${createdAt.year}',
@@ -646,7 +650,6 @@ class _PostVideoPlayerState extends State<_PostVideoPlayer> {
   Widget build(BuildContext context) {
     if (!_initialized || _controller == null) {
       return Center(
-        // ✅ Loader noir/blanc adaptatif
         child: CircularProgressIndicator(color: widget.isDark ? Colors.white : Colors.black),
       );
     }
@@ -730,7 +733,6 @@ class _VideoControlsBarState extends State<_VideoControlsBar> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ La barre reste blanche au-dessus de la vidéo (lisibilité)
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
